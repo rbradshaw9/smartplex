@@ -53,7 +53,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",  # Next.js dev
-        "https://smartplex.vercel.app",  # Production frontend
+        "https://smartplex-ecru.vercel.app",  # Production frontend
         "https://*.vercel.app",  # Vercel preview deployments
     ],
     allow_credentials=True,
@@ -84,6 +84,7 @@ async def not_found_handler(request, exc) -> JSONResponse:
 app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(sync.router, prefix="/sync", tags=["sync"])  
 app.include_router(ai.router, prefix="/ai", tags=["ai"])
+app.include_router(plex_auth.router, prefix="/api/auth/plex", tags=["authentication"])
 
 
 @app.get("/")
