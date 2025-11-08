@@ -7,8 +7,8 @@ WORKDIR /app
 # Install poetry
 RUN pip install --no-cache-dir poetry
 
-# Copy dependency files
-COPY pyproject.toml poetry.lock* ./
+# Copy dependency files from the service directory
+COPY apps/api/pyproject.toml apps/api/poetry.lock* ./
 
 # Install dependencies
 RUN poetry config virtualenvs.create false \
@@ -24,8 +24,8 @@ WORKDIR /app
 COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy application code
-COPY app/ ./app/
+# Copy application code from the service directory
+COPY apps/api/app/ ./app/
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
