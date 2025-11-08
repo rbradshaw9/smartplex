@@ -100,16 +100,27 @@ export function LoginForm() {
             
             const { user, supabase_session } = await loginResponse.json()
             
+            console.log('Backend response:', { user, supabase_session })
+            
             // Sign in to Supabase using the temporary password
             // This creates proper session cookies that the dashboard can use
+            if (!supabase_session.temp_password) {
+              throw new Error('No temporary password received from backend')
+            }
+            
+            console.log('Signing in to Supabase with email:', supabase_session.email)
+            
             const { error: signInError } = await supabase.auth.signInWithPassword({
               email: supabase_session.email,
               password: supabase_session.temp_password,
             })
 
             if (signInError) {
+              console.error('Supabase sign-in error:', signInError)
               throw new Error(`Failed to establish Supabase session: ${signInError.message}`)
             }
+            
+            console.log('Successfully signed in to Supabase')
             
             // Store Plex token for API requests
             if (typeof window !== 'undefined') {
