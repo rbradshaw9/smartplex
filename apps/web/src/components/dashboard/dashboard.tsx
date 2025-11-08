@@ -85,14 +85,16 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
         })
 
         // Generate simple recommendations based on liked content
-        const likedItems = data.ratings.liked.slice(0, 3)
-        const newRecommendations = likedItems.map((item: any) => ({
-          title: `More like ${item.title}`,
-          reason: `You rated this ${item.user_rating}/10`,
-        }))
-        
-        if (newRecommendations.length > 0) {
-          setRecommendations(newRecommendations)
+        if (data.ratings && data.ratings.liked && data.ratings.liked.length > 0) {
+          const likedItems = data.ratings.liked.slice(0, 3)
+          const newRecommendations = likedItems.map((item: any) => ({
+            title: `More like ${item.title}`,
+            reason: `You rated this ${item.user_rating}/10`,
+          }))
+          
+          if (newRecommendations.length > 0) {
+            setRecommendations(newRecommendations)
+          }
         }
 
         setFetchingData(false)
