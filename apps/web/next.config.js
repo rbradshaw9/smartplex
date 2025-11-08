@@ -4,10 +4,19 @@ const nextConfig = {
   generateBuildId: async () => {
     return 'build-' + Date.now() + '-v4-' + Math.random().toString(36).substring(7)
   },
-  // Disable webpack cache completely
+  // Disable webpack cache completely and force different chunk names
   webpack: (config, { isServer }) => {
     // Disable webpack persistent cache
     config.cache = false
+    // Force new chunk hashing algorithm
+    config.optimization = config.optimization || {}
+    config.optimization.moduleIds = 'deterministic'
+    config.optimization.chunkIds = 'deterministic'
+    // Add random seed to force different hashes
+    const timestamp = Date.now()
+    config.output = config.output || {}
+    config.output.hashFunction = 'xxhash64'
+    config.output.hashDigestLength = 16
     return config
   },
   images: {
