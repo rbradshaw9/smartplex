@@ -44,16 +44,23 @@ async def plex_login(
 ) -> PlexAuthResponse:
     """Authenticate user with Plex OAuth token and create/login to Supabase."""
     
+    print("🔐 Starting Plex authentication flow...")
+    print(f"📝 Auth token received (length: {len(credentials.authToken)})")
+    
     try:
         # Step 1: Verify Plex token and get user data
+        print("📡 Validating Plex token with plex.tv...")
         plex_user_data = await get_plex_user_from_token(credentials.authToken)
+        print(f"✅ Plex user validated: {plex_user_data.get('username')} (ID: {plex_user_data.get('id')})")
         
         # Step 2: Create or get user in Supabase Auth
         email = plex_user_data.get('email') or f"{plex_user_data['username']}@smartplex.local"
+        print(f"📧 Using email: {email}")
         
         # Try to find existing auth user by email
         try:
             # Check if auth user exists
+            print("🔍 Checking for existing Supabase auth user...")
             auth_user_response = supabase.auth.admin.list_users()
             existing_auth_user = next(
                 (u for u in auth_user_response if u.email == email), 
@@ -62,6 +69,7 @@ async def plex_login(
             
             if existing_auth_user:
                 # Update existing auth user metadata
+                print(f"✅ Found existing auth user: {existing_auth_user.id}")
                 user_id = existing_auth_user.id
                 supabase.auth.admin.update_user_by_id(
                     user_id,
@@ -73,8 +81,10 @@ async def plex_login(
                         }
                     }
                 )
+                print("✅ Updated auth user metadata")
             else:
                 # Create new auth user
+                print("➕ Creating new Supabase auth user...")
                 import secrets
                 temp_password = secrets.token_urlsafe(32)
                 
@@ -89,12 +99,15 @@ async def plex_login(
                     }
                 })
                 user_id = auth_response.user.id
+                print(f"✅ Created auth user: {user_id}")
             
             # Step 3: Create/update user profile in public.users table
+            print("🔍 Checking for existing user profile...")
             existing_profile = supabase.table('users').select('*').eq('id', user_id).execute()
             
             if existing_profile.data:
                 # Update existing profile
+                print(f"✅ Found existing profile, updating...")
                 supabase.table('users').update({
                     'plex_user_id': str(plex_user_data['id']),
                     'plex_username': plex_user_data['username'],
@@ -102,8 +115,10 @@ async def plex_login(
                     'updated_at': 'now()',
                 }).eq('id', user_id).execute()
                 user_data = existing_profile.data[0]
+                print("✅ Profile updated")
             else:
                 # Create new profile
+                print("➕ Creating new user profile...")
                 new_profile = supabase.table('users').insert({
                     'id': user_id,
                     'email': email,
@@ -113,8 +128,10 @@ async def plex_login(
                     'role': 'user'
                 }).execute()
                 user_data = new_profile.data[0]
+                print(f"✅ Profile created: {user_data['id']}")
             
             # Step 4: Generate session token
+            print("🎫 Generating session token...")
             from datetime import datetime, timedelta
             expires_at = datetime.utcnow() + timedelta(hours=24)
             
@@ -127,6 +144,7 @@ async def plex_login(
                 'expires_at': expires_at.isoformat()
             }
             
+            print("✅ Authentication successful!")
             return PlexAuthResponse(
                 user=user_data,
                 supabase_session=session_data,
@@ -136,7 +154,7 @@ async def plex_login(
         except Exception as e:
             # If Supabase auth fails, fall back to table-only approach
             # This allows the app to work even if auth.admin API has issues
-            print(f"Auth user creation failed, using table-only: {e}")
+            print(f"⚠️ Auth user creation failed, using table-only fallback: {e}")
             
             existing_user = supabase.table('users').select('*').eq('email', email).execute()
             
@@ -177,6 +195,9 @@ async def plex_login(
             )
         
     except Exception as e:
+        print(f"❌ Authentication error: {str(e)}")
+        import traceback
+        print(f"📋 Full traceback:\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=401,
             detail=f"Plex authentication failed: {str(e)}"

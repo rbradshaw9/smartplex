@@ -31,6 +31,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     print(f"🔧 Environment: {settings.environment}")
     print(f"🔗 Supabase URL: {settings.supabase_url}")
+    print(f"🔑 Supabase Service Key: {'SET' if settings.supabase_service_key else 'MISSING'}")
+    print(f"🌐 Frontend URL: {settings.frontend_url}")
     
     yield
     
@@ -65,6 +67,8 @@ else:
         "https://smartplex-ecru.vercel.app",
         "https://*.vercel.app",
     ])
+
+print(f"🔒 CORS allowed origins: {allowed_origins}")
 
 app.add_middleware(
     CORSMiddleware,
