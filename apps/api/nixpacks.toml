@@ -2,7 +2,7 @@
 nixPkgs = ["python313", "poetry"]
 
 [phases.install]
-cmds = ["poetry install --only main"]
+cmds = ["poetry install --only main --no-root"]
 
 [phases.build]
 cmds = []
