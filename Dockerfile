@@ -12,9 +12,9 @@ RUN pip install --no-cache-dir poetry
 # Copy dependency files from API service
 COPY apps/api/pyproject.toml apps/api/poetry.lock* ./
 
-# Install dependencies
+# Install dependencies (--no-root to skip installing the project itself)
 RUN poetry config virtualenvs.create false \
-    && poetry install --only main --no-interaction --no-ansi
+    && poetry install --only main --no-interaction --no-ansi --no-root
 
 # Final stage
 FROM python:3.13-slim
