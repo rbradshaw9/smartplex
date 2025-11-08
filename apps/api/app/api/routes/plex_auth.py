@@ -21,6 +21,12 @@ router = APIRouter()
 
 
 class PlexLoginRequest(BaseModel):
+    """Request model for Plex authentication using OAuth token."""
+    authToken: str = Field(..., min_length=1, description="Plex OAuth auth token from PIN flow")
+
+
+class PlexCredentialsRequest(BaseModel):
+    """Legacy request model for username/password authentication."""
     username: str = Field(..., min_length=1, description="Plex username or email")
     password: str = Field(..., min_length=1, description="Plex password")
 
@@ -36,14 +42,11 @@ async def plex_login(
     credentials: PlexLoginRequest,
     supabase = Depends(get_supabase_client)
 ) -> PlexAuthResponse:
-    """Authenticate user with Plex and create/login to Supabase."""
+    """Authenticate user with Plex OAuth token and create/login to Supabase."""
     
     try:
-        # Step 1: Authenticate with Plex API
-        plex_user_data = await authenticate_with_plex(
-            credentials.username, 
-            credentials.password
-        )
+        # Step 1: Verify Plex token and get user data
+        plex_user_data = await get_plex_user_from_token(credentials.authToken)
         
         # Step 2: Create or get user in Supabase
         email = plex_user_data.get('email') or f"{plex_user_data['username']}@smartplex.local"
@@ -94,8 +97,46 @@ async def plex_login(
         )
 
 
+async def get_plex_user_from_token(auth_token: str) -> Dict[str, Any]:
+    """Get Plex user details from OAuth token."""
+    
+    headers = {
+        'X-Plex-Token': auth_token,
+        'X-Plex-Product': 'SmartPlex',
+        'X-Plex-Client-Identifier': 'smartplex-auth',
+        'Accept': 'application/json'
+    }
+    
+    async with httpx.AsyncClient() as client:
+        # Get user details using the OAuth token
+        user_response = await client.get(
+            'https://plex.tv/users/account.json',
+            headers=headers,
+            timeout=10.0
+        )
+        
+        if user_response.status_code != 200:
+            error_detail = user_response.text
+            if 'unauthorized' in error_detail.lower():
+                raise ValueError("Invalid Plex token")
+            else:
+                raise ValueError(f"Failed to get Plex user details: {error_detail}")
+        
+        user_data = user_response.json()
+        user_account = user_data.get('user', {})
+        
+        return {
+            'id': user_account.get('id'),
+            'username': user_account.get('username'),
+            'email': user_account.get('email'),
+            'title': user_account.get('title') or user_account.get('username'),
+            'thumb': user_account.get('thumb'),
+            'authToken': auth_token
+        }
+
+
 async def authenticate_with_plex(username: str, password: str) -> Dict[str, Any]:
-    """Authenticate with Plex.tv API and return user data."""
+    """Legacy: Authenticate with Plex.tv API using username/password."""
     
     # Encode credentials for Basic Auth
     credentials_b64 = base64.b64encode(f"{username}:{password}".encode()).decode()
@@ -110,7 +151,7 @@ async def authenticate_with_plex(username: str, password: str) -> Dict[str, Any]
     }
     
     async with httpx.AsyncClient() as client:
-        # Step 1: Get auth token from Plex
+        # Get auth token from Plex
         auth_response = await client.post(
             'https://plex.tv/users/sign_in.json',
             headers=headers,
@@ -131,31 +172,8 @@ async def authenticate_with_plex(username: str, password: str) -> Dict[str, Any]
         if not auth_token:
             raise ValueError("Failed to get Plex auth token")
         
-        # Step 2: Get detailed user info using the token
-        user_headers = {
-            'X-Plex-Token': auth_token,
-            'Accept': 'application/json'
-        }
-        
-        user_response = await client.get(
-            'https://plex.tv/users/account.json',
-            headers=user_headers,
-            timeout=10.0
-        )
-        
-        if user_response.status_code != 200:
-            raise ValueError("Failed to get Plex user details")
-        
-        user_details = user_response.json().get('user', {})
-        
-        return {
-            'id': user_details.get('id'),
-            'username': user_details.get('username'),
-            'email': user_details.get('email'),
-            'title': user_details.get('title'),
-            'thumb': user_details.get('thumb'),
-            'authToken': auth_token
-        }
+        # Get user details using the token
+        return await get_plex_user_from_token(auth_token)
 
 
 @router.get("/verify")
