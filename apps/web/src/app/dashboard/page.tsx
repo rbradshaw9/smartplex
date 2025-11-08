@@ -1,20 +1,57 @@
-import { redirect } from 'next/navigation'
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Dashboard } from '@/components/dashboard/dashboard'
-import { Database } from '@smartplex/db/types'
 
-export default async function DashboardPage() {
-  const supabase = createServerComponentClient<Database>({
-    cookies,
-  })
+export default function DashboardPage() {
+  const router = useRouter()
+  const [user, setUser] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+  useEffect(() => {
+    // Check for user session in localStorage (Plex auth)
+    const userDataStr = localStorage.getItem('smartplex_user')
+    const sessionDataStr = localStorage.getItem('smartplex_session')
+    
+    if (!userDataStr || !sessionDataStr) {
+      router.push('/')
+      return
+    }
 
-  if (!session) {
-    redirect('/')
+    try {
+      const userData = JSON.parse(userDataStr)
+      const sessionData = JSON.parse(sessionDataStr)
+      
+      // Check if session is expired
+      const expiresAt = new Date(sessionData.expires_at)
+      if (expiresAt < new Date()) {
+        // Session expired, clear and redirect
+        localStorage.removeItem('smartplex_user')
+        localStorage.removeItem('smartplex_session')
+        localStorage.removeItem('plex_token')
+        router.push('/')
+        return
+      }
+
+      setUser(userData)
+      setLoading(false)
+    } catch (error) {
+      console.error('Failed to parse user data:', error)
+      router.push('/')
+    }
+  }, [router])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-white">Loading...</div>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return null
   }
 
   // Mock user data for demo
@@ -37,7 +74,7 @@ export default async function DashboardPage() {
 
   return (
     <Dashboard 
-      user={session.user} 
+      user={user} 
       userStats={mockUserStats}
       recommendations={mockRecommendations}
     />
