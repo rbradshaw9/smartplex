@@ -13,8 +13,8 @@ Set these in Railway dashboard → Settings → Variables:
 
 ```bash
 SMARTPLEX_ENV=production
-SUPABASE_URL=https://qqqyzrvwysxuevg8ww.supabase.co
-SUPABASE_SERVICE_KEY=<your-supabase-service-key>
+SUPABASE_URL=https://lecunkywsfuqumqzddol.supabase.co
+SUPABASE_SERVICE_KEY=<your-supabase-service-role-key>
 FRONTEND_URL=https://smartplex-ecru.vercel.app
 ```
 
