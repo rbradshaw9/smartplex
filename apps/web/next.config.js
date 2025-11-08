@@ -1,22 +1,28 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Force fresh build - cache buster v4
+  // DEBUGGING: Disable minification to see actual errors
+  productionBrowserSourceMaps: true,
+  // Force fresh build - cache buster v5
   generateBuildId: async () => {
-    return 'build-' + Date.now() + '-v4-' + Math.random().toString(36).substring(7)
+    return 'build-' + Date.now() + '-v5-' + Math.random().toString(36).substring(7)
+  },
+  compiler: {
+    // Remove console logs in production (but keep errors)
+    removeConsole: false,
   },
   // Disable webpack cache completely and force different chunk names
-  webpack: (config, { isServer }) => {
+  webpack: (config, { isServer, dev }) => {
     // Disable webpack persistent cache
     config.cache = false
-    // Force new chunk hashing algorithm
-    config.optimization = config.optimization || {}
-    config.optimization.moduleIds = 'deterministic'
-    config.optimization.chunkIds = 'deterministic'
-    // Add random seed to force different hashes
-    const timestamp = Date.now()
-    config.output = config.output || {}
-    config.output.hashFunction = 'xxhash64'
-    config.output.hashDigestLength = 16
+    
+    // CRITICAL: Disable minification to see actual error messages
+    if (!dev) {
+      config.optimization.minimize = false
+    }
+    
+    // Enable source maps
+    config.devtool = 'source-map'
+    
     return config
   },
   images: {

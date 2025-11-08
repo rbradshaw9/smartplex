@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   description: 'The autonomous, AI-powered Plex server ecosystem that intelligently manages your media.',
   keywords: ['Plex', 'AI', 'Media Server', 'Automation', 'SmartPlex'],
   other: {
-    'build-version': '3.0.0-' + Date.now(), // Force cache bust
+    'build-version': '3.0.1', // Static version - no Date.now() to avoid SSR mismatch
   },
 }
 
