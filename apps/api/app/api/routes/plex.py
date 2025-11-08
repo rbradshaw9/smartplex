@@ -208,10 +208,14 @@ async def get_watch_history(
                 # Get watch history from all library sections
                 for section in server.library.sections():
                     try:
-                        # Get recently viewed items from this section
-                        for item in section.recentlyViewed(maxresults=limit):
-                            # Track stats
+                        # Get all items and filter by view count
+                        for item in section.all():
+                            # Skip items that haven't been watched
                             view_count = getattr(item, 'viewCount', 0)
+                            if view_count == 0:
+                                continue
+                                
+                            # Track stats
                             duration = getattr(item, 'duration', 0)
                             result["stats"]["total_watched"] += view_count
                             result["stats"]["total_hours"] += (duration / 1000 / 60 / 60) * view_count  # Convert ms to hours

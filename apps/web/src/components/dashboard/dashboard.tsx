@@ -103,7 +103,7 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
     }
 
     fetchPlexData()
-  }, [])
+  }, [supabase])
 
   const handleSignOut = async () => {
     setLoading(true)

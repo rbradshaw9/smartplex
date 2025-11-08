@@ -3,7 +3,6 @@ AI and recommendation endpoints for SmartPlex API.
 Handles chat interactions, content recommendations, and AI analysis.
 """
 
-import random
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
@@ -13,7 +12,23 @@ from supabase import Client
 
 from app.core.supabase import get_supabase_client, get_current_user, get_optional_user
 from app.core.exceptions import ValidationException, ExternalAPIException
+from app.core.ai import AIService, get_ai_service
 from app.config import get_settings, Settings
+
+router = APIRouter()
+
+import random
+from datetime import datetime, timedelta
+from typing import Dict, Any, List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from supabase import Client
+
+from app.core.supabase import get_supabase_client, get_current_user, get_optional_user
+from app.core.exceptions import ValidationException, ExternalAPIException
+from app.config import get_settings, Settings
+from app.services.ai_service import AIService
 
 router = APIRouter()
 
@@ -74,47 +89,66 @@ async def chat_with_ai(
         AI response with recommendations and insights
     """
     try:
-        # Mock AI responses - in production, integrate with OpenAI/Anthropic
-        mock_responses = [
-            "Based on your recent viewing of action movies like 'The Batman', I recommend checking out 'Top Gun: Maverick' if it's available in your library. It has great reviews and fits your preference for high-quality action films.",
-            
-            "I noticed you've been watching a lot of superhero content lately. You might enjoy 'The Boys' series if you're looking for a darker take on the genre, or 'Invincible' for excellent animation.",
-            
-            "Your viewing statistics show you prefer content from the last 5 years. I can help you discover hidden gems in your library that match this preference. Would you like me to analyze your unwatched items?",
-            
-            "Looking at your watch history, you seem to enjoy both movies and series equally. For your next binge, consider 'House of the Dragon' if you like epic fantasy, or 'The Last of Us' for post-apocalyptic drama.",
-            
-            "I can help you optimize your library! Based on your viewing patterns, you might want to consider archiving content you haven't watched in over 6 months to free up space."
-        ]
+        # Initialize AI service
+        ai_service = AIService(settings)
         
-        # Select a relevant mock response
-        response_text = random.choice(mock_responses)
+        # Get user's viewing context from database
+        user_stats = supabase.table('user_stats').select('*').eq('user_id', current_user['id']).execute()
         
-        # Store chat interaction in database (mock)
+        # Build user context
+        user_context = {
+            "user_id": current_user["id"],
+            "total_watched": len(user_stats.data) if user_stats.data else 0,
+            "favorite_genres": [],  # TODO: Calculate from watch history
+            "recent_watches": []  # TODO: Get from user_stats
+        }
+        
+        # Get recent conversation history (last 5 messages)
+        conversation_history = []
+        recent_chats = supabase.table('chat_history')\
+            .select('message, response')\
+            .eq('user_id', current_user['id'])\
+            .order('created_at', desc=True)\
+            .limit(5)\
+            .execute()
+        
+        if recent_chats.data:
+            for chat in reversed(recent_chats.data):
+                conversation_history.append({"role": "user", "content": chat['message']})
+                conversation_history.append({"role": "assistant", "content": chat['response']})
+        
+        # Get AI response
+        ai_response = await ai_service.chat(
+            message=chat_message.message,
+            user_context=user_context,
+            conversation_history=conversation_history
+        )
+        
+        # Store chat in database
         chat_record = {
             "user_id": current_user["id"],
             "message": chat_message.message,
-            "response": response_text,
-            "context": chat_message.context,
-            "model_used": "gpt-3.5-turbo",  # Mock
-            "tokens_used": 150,  # Mock
-            "created_at": datetime.utcnow().isoformat(),
+            "response": ai_response["response"],
+            "context": chat_message.context or {},
+            "model_used": ai_response["model"],
+            "tokens_used": ai_response["tokens_used"],
         }
         
-        # In production: supabase.table("chat_history").insert(chat_record).execute()
+        supabase.table("chat_history").insert(chat_record).execute()
         
         return ChatResponse(
-            response=response_text,
+            response=ai_response["response"],
             context_used=bool(chat_message.context),
-            tokens_used=150,
-            model_used="gpt-3.5-turbo",
+            tokens_used=ai_response["tokens_used"],
+            model_used=ai_response["model"],
             timestamp=datetime.utcnow()
         )
         
     except Exception as e:
+        print(f"AI chat error: {e}")
         raise ExternalAPIException(
             message="AI chat service unavailable",
-            details=str(e)
+            details=str(e) if settings.environment == "development" else None
         )
 
 
