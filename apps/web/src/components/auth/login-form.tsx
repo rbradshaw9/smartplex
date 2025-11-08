@@ -11,13 +11,13 @@ export function LoginForm() {
   const router = useRouter()
   const supabase = createClientComponentClient<Database>()
 
-  const handlePlexLogin = async () => {
+  const handleOAuthLogin = async (provider: 'github' | 'google') => {
     try {
       setLoading(true)
       setError(null)
 
       const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'github', // Temporary: Use GitHub OAuth as Plex OAuth proxy
+        provider,
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
         },
@@ -41,31 +41,44 @@ export function LoginForm() {
         </div>
       )}
       
-      <button
-        onClick={handlePlexLogin}
-        disabled={loading}
-        className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed 
-                   text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center 
-                   justify-center space-x-2"
-      >
-        {loading ? (
-          <>
-            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-            <span>Connecting...</span>
-          </>
-        ) : (
-          <>
-            <span className="text-lg">🎬</span>
-            <span>Continue with Plex</span>
-          </>
-        )}
-      </button>
+      <div className="space-y-2">
+        <button
+          onClick={() => handleOAuthLogin('github')}
+          disabled={loading}
+          className="w-full bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed 
+                     text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center 
+                     justify-center space-x-2 border border-slate-600"
+        >
+          {loading ? (
+            <>
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+              <span>Connecting...</span>
+            </>
+          ) : (
+            <>
+              <span>🐙</span>
+              <span>Continue with GitHub</span>
+            </>
+          )}
+        </button>
+
+        <button
+          onClick={() => handleOAuthLogin('google')}
+          disabled={loading}
+          className="w-full bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed 
+                     text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center 
+                     justify-center space-x-2 border border-slate-600"
+        >
+          <span>�</span>
+          <span>Continue with Google</span>
+        </button>
+      </div>
 
       <p className="text-xs text-slate-400 text-center">
         By continuing, you agree to SmartPlex&apos;s Terms of Service and Privacy Policy.
         <br />
-        <span className="text-yellow-400 font-medium">
-          Note: Currently using GitHub OAuth as Plex OAuth proxy for demo
+        <span className="text-blue-400 font-medium">
+          Plex authentication coming soon!
         </span>
       </p>
     </div>

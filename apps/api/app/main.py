@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import get_settings
-from app.api.routes import health, sync, ai
+from app.api.routes import health, sync, ai, plex_auth
 from app.core.supabase import get_supabase_client
 from app.core.exceptions import SmartPlexException
 
