@@ -11,12 +11,16 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from app.config import get_settings, Settings
 from app.core.exceptions import AuthenticationException, DatabaseException
+from app.core.logging import get_logger
 
 # HTTPBearer security scheme for JWT tokens
 security = HTTPBearer()
 
 # Singleton Supabase client instance
 _supabase_client: Optional[Client] = None
+
+# Logger
+logger = get_logger("supabase")
 
 
 def get_supabase_client(settings: Settings = Depends(get_settings)) -> Client:
@@ -26,16 +30,19 @@ def get_supabase_client(settings: Settings = Depends(get_settings)) -> Client:
     if _supabase_client is None:
         try:
             print("🔗 Initializing Supabase client...")
+            # Simple initialization without extra parameters
             _supabase_client = create_client(
-                supabase_url=settings.supabase_url,
-                supabase_key=settings.supabase_service_key,
+                settings.supabase_url,
+                settings.supabase_service_key
             )
             print("✅ Supabase client initialized")
         except Exception as e:
             print(f"❌ Failed to initialize Supabase client: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             raise DatabaseException(
-                message="Failed to initialize Supabase client",
-                details=str(e)
+                message="Database connection failed",
+                details=str(e) if settings.environment == "development" else None
             )
     
     return _supabase_client

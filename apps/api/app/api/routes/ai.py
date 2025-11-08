@@ -3,6 +3,7 @@ AI and recommendation endpoints for SmartPlex API.
 Handles chat interactions, content recommendations, and AI analysis.
 """
 
+import random
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
@@ -87,7 +88,6 @@ async def chat_with_ai(
         ]
         
         # Select a relevant mock response
-        import random
         response_text = random.choice(mock_responses)
         
         # Store chat interaction in database (mock)
@@ -205,9 +205,9 @@ async def analyze_viewing_patterns(
 
 @router.get("/recommendations")
 async def get_recommendations(
-    limit: int = 10,
-    genre: Optional[str] = None,
-    content_type: Optional[str] = None,  # movie, series, or None for both
+    limit: int = Field(default=10, ge=1, le=100, description="Max 100 recommendations"),
+    genre: Optional[str] = Field(default=None, max_length=50),
+    content_type: Optional[str] = Field(default=None, pattern="^(movie|series)$"),  # movie, series, or None for both
     current_user: Optional[Dict[str, Any]] = Depends(get_optional_user),
     supabase: Client = Depends(get_supabase_client)
 ) -> List[Dict[str, Any]]:

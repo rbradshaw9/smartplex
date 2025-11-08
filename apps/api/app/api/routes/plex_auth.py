@@ -89,7 +89,6 @@ async def plex_login(
             else:
                 # Create new auth user
                 print("➕ Creating new Supabase auth user...")
-                import secrets
                 temp_password = secrets.token_urlsafe(32)
                 
                 auth_response = supabase.auth.admin.create_user({
@@ -107,36 +106,51 @@ async def plex_login(
             
             # Step 3: Create/update user profile in public.users table
             print("🔍 Checking for existing user profile...")
-            existing_profile = supabase.table('users').select('*').eq('id', user_id).execute()
-            
-            if existing_profile.data:
-                # Update existing profile
-                print(f"✅ Found existing profile, updating...")
-                supabase.table('users').update({
-                    'plex_user_id': str(plex_user_data['id']),
-                    'plex_username': plex_user_data['username'],
-                    'display_name': plex_user_data.get('title', plex_user_data['username']),
-                    'updated_at': 'now()',
-                }).eq('id', user_id).execute()
-                user_data = existing_profile.data[0]
-                print("✅ Profile updated")
-            else:
-                # Create new profile
-                print("➕ Creating new user profile...")
-                new_profile = supabase.table('users').insert({
-                    'id': user_id,
-                    'email': email,
-                    'display_name': plex_user_data.get('title', plex_user_data['username']),
-                    'plex_user_id': str(plex_user_data['id']),
-                    'plex_username': plex_user_data['username'],
-                    'role': 'user'
-                }).execute()
-                user_data = new_profile.data[0]
-                print(f"✅ Profile created: {user_data['id']}")
+            try:
+                existing_profile = supabase.table('users').select('*').eq('id', user_id).execute()
+                
+                if not existing_profile or not hasattr(existing_profile, 'data'):
+                    raise Exception("Invalid response from database query")
+                
+                if existing_profile.data:
+                    # Update existing profile
+                    print(f"✅ Found existing profile, updating...")
+                    update_response = supabase.table('users').update({
+                        'plex_user_id': str(plex_user_data['id']),
+                        'plex_username': plex_user_data['username'],
+                        'display_name': plex_user_data.get('title', plex_user_data['username']),
+                        'updated_at': 'now()',
+                    }).eq('id', user_id).execute()
+                    
+                    if not update_response or not update_response.data:
+                        # Fallback to existing data if update doesn't return data
+                        user_data = existing_profile.data[0]
+                    else:
+                        user_data = update_response.data[0]
+                    print("✅ Profile updated")
+                else:
+                    # Create new profile
+                    print("➕ Creating new user profile...")
+                    new_profile = supabase.table('users').insert({
+                        'id': user_id,
+                        'email': email,
+                        'display_name': plex_user_data.get('title', plex_user_data['username']),
+                        'plex_user_id': str(plex_user_data['id']),
+                        'plex_username': plex_user_data['username'],
+                        'role': 'user'
+                    }).execute()
+                    
+                    if not new_profile or not new_profile.data:
+                        raise Exception("Failed to create user profile - no data returned")
+                    
+                    user_data = new_profile.data[0]
+                    print(f"✅ Profile created: {user_data['id']}")
+            except Exception as db_error:
+                print(f"❌ Database operation failed: {db_error}")
+                raise Exception(f"Failed to create/update user profile: {str(db_error)}")
             
             # Step 4: Generate session token
             print("🎫 Generating session token...")
-            from datetime import datetime, timedelta
             expires_at = datetime.utcnow() + timedelta(hours=24)
             
             session_data = {
@@ -180,7 +194,6 @@ async def plex_login(
                 }).execute()
                 user_data = new_user.data[0]
             
-            from datetime import datetime, timedelta
             expires_at = datetime.utcnow() + timedelta(hours=24)
             
             session_data = {
@@ -200,11 +213,11 @@ async def plex_login(
         
     except Exception as e:
         print(f"❌ Authentication error: {str(e)}")
-        import traceback
         print(f"📋 Full traceback:\n{traceback.format_exc()}")
+        # Don't expose internal error details to user
         raise HTTPException(
             status_code=401,
-            detail=f"Plex authentication failed: {str(e)}"
+            detail="Authentication failed. Please try again or contact support if the issue persists."
         )
 
 
@@ -228,19 +241,29 @@ async def get_plex_user_from_token(auth_token: str) -> Dict[str, Any]:
         
         if user_response.status_code != 200:
             error_detail = user_response.text
+            print(f"❌ Plex API error: {error_detail}")  # Log internally
             if 'unauthorized' in error_detail.lower():
                 raise ValueError("Invalid Plex token")
             else:
-                raise ValueError(f"Failed to get Plex user details: {error_detail}")
+                raise ValueError("Failed to verify Plex credentials")
         
         user_data = user_response.json()
         user_account = user_data.get('user', {})
         
+        # Validate required fields
+        user_id = user_account.get('id')
+        username = user_account.get('username')
+        
+        if not user_id:
+            raise ValueError("Plex response missing required field: user.id")
+        if not username:
+            raise ValueError("Plex response missing required field: user.username")
+        
         return {
-            'id': user_account.get('id'),
-            'username': user_account.get('username'),
-            'email': user_account.get('email'),
-            'title': user_account.get('title') or user_account.get('username'),
+            'id': user_id,
+            'username': username,
+            'email': user_account.get('email'),  # Optional
+            'title': user_account.get('title') or username,
             'thumb': user_account.get('thumb'),
             'authToken': auth_token
         }
@@ -271,10 +294,11 @@ async def authenticate_with_plex(username: str, password: str) -> Dict[str, Any]
         
         if auth_response.status_code != 201:
             error_detail = auth_response.text
+            print(f"❌ Plex authentication error: {error_detail}")  # Log internally
             if 'unauthorized' in error_detail.lower():
                 raise ValueError("Invalid Plex credentials")
             else:
-                raise ValueError(f"Plex authentication failed: {error_detail}")
+                raise ValueError("Plex authentication failed")
         
         auth_data = auth_response.json()
         user_info = auth_data.get('user', {})

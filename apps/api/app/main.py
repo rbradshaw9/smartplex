@@ -21,23 +21,32 @@ from app.config import get_settings
 from app.api.routes import health, sync, ai, plex_auth
 from app.core.supabase import get_supabase_client
 from app.core.exceptions import SmartPlexException
+from app.core.logging import setup_logging, get_logger
+
+# Setup logging
+logger = get_logger("main")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """FastAPI lifespan context manager for startup/shutdown."""
     # Startup
-    print("🚀 SmartPlex API starting up...")
     settings = get_settings()
-    print(f"🔧 Environment: {settings.environment}")
-    print(f"🔗 Supabase URL: {settings.supabase_url}")
-    print(f"🔑 Supabase Service Key: {'SET' if settings.supabase_service_key else 'MISSING'}")
-    print(f"🌐 Frontend URL: {settings.frontend_url}")
+    
+    # Setup logging with environment-based level
+    log_level = "DEBUG" if settings.environment == "development" else "INFO"
+    setup_logging(log_level)
+    
+    logger.info("🚀 SmartPlex API starting up...")
+    logger.info(f"🔧 Environment: {settings.environment}")
+    logger.info(f"🔗 Supabase URL: {settings.supabase_url}")
+    logger.info(f"🔑 Supabase Service Key: {'SET' if settings.supabase_service_key else 'MISSING'}")
+    logger.info(f"🌐 Frontend URL: {settings.frontend_url}")
     
     yield
     
     # Shutdown
-    print("🔄 SmartPlex API shutting down...")
+    logger.info("🔄 SmartPlex API shutting down...")
 
 
 # Create FastAPI app with lifespan management
@@ -68,7 +77,7 @@ else:
         "https://*.vercel.app",
     ])
 
-print(f"🔒 CORS allowed origins: {allowed_origins}")
+logger.info(f"🔒 CORS allowed origins: {allowed_origins}")
 
 app.add_middleware(
     CORSMiddleware,

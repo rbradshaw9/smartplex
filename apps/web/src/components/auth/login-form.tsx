@@ -49,55 +49,87 @@ export function LoginForm() {
       window.open(authUrl, 'PlexAuth', 'width=600,height=700')
 
       // Step 3: Poll for auth token
+      let pollCount = 0
+      const MAX_POLLS = 150 // 5 minutes at 2-second intervals
+      
       const pollInterval = setInterval(async () => {
-        const checkResponse = await fetch(`https://plex.tv/api/v2/pins/${pinData.id}`, {
-          headers: {
-            'Accept': 'application/json',
-            'X-Plex-Client-Identifier': clientId,
-          },
-        })
-
-        const checkData = await checkResponse.json()
+        pollCount++
         
-        if (checkData.authToken) {
+        // Stop polling after max attempts
+        if (pollCount > MAX_POLLS) {
           clearInterval(pollInterval)
-          
-          // Step 4: Send token to our backend to create/login user
-          const loginResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/plex/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              authToken: checkData.authToken 
-            }),
+          setError('Plex authentication timed out. Please try again.')
+          setLoading(false)
+          setPlexPin(null)
+          return
+        }
+        
+        try {
+          const checkResponse = await fetch(`https://plex.tv/api/v2/pins/${pinData.id}`, {
+            headers: {
+              'Accept': 'application/json',
+              'X-Plex-Client-Identifier': clientId,
+            },
+            signal: AbortSignal.timeout(5000), // 5 second timeout per request
           })
 
-          if (!loginResponse.ok) {
-            const errorData = await loginResponse.json().catch(() => ({}))
-            throw new Error(errorData.detail || 'Failed to authenticate with backend')
-          }
-          
-          const { user, supabase_session } = await loginResponse.json()
-          
-          // Store session info for authenticated requests
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('smartplex_user', JSON.stringify(user))
-            localStorage.setItem('smartplex_session', JSON.stringify(supabase_session))
-            localStorage.setItem('plex_token', checkData.authToken)
+          if (!checkResponse.ok) {
+            console.warn(`Poll failed with status: ${checkResponse.status}`)
+            return // Continue polling on transient errors
           }
 
-          setLoading(false)
-          router.push('/dashboard')
-          router.refresh()
+          const checkData = await checkResponse.json()
+          
+          if (checkData.authToken) {
+            clearInterval(pollInterval)
+            
+            // Step 4: Send token to our backend to create/login user
+            const loginResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/plex/login`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                authToken: checkData.authToken 
+              }),
+              signal: AbortSignal.timeout(30000), // 30 second timeout for login
+            })
+
+            if (!loginResponse.ok) {
+              const errorData = await loginResponse.json().catch(() => ({}))
+              throw new Error(errorData.detail || 'Failed to authenticate with backend')
+            }
+            
+            const { user, supabase_session } = await loginResponse.json()
+            
+            // Store session info for authenticated requests
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('smartplex_user', JSON.stringify(user))
+              localStorage.setItem('smartplex_session', JSON.stringify(supabase_session))
+              localStorage.setItem('plex_token', checkData.authToken)
+            }
+
+            setLoading(false)
+            router.push('/dashboard')
+            router.refresh()
+          }
+        } catch (pollError: any) {
+          console.error('Poll error:', pollError)
+          // Continue polling on errors unless it's a fatal backend error
+          if (pollError.message?.includes('Failed to authenticate with backend')) {
+            clearInterval(pollInterval)
+            setError(pollError.message)
+            setLoading(false)
+            setPlexPin(null)
+          }
+          // Otherwise continue polling - might be transient
         }
       }, 2000) // Poll every 2 seconds
 
-      // Timeout after 5 minutes
-      setTimeout(() => {
-        clearInterval(pollInterval)
-        setError('Plex authentication timed out. Please try again.')
-        setLoading(false)
-        setPlexPin(null)
-      }, 300000)
+      // Cleanup on unmount
+      return () => {
+        if (pollInterval) {
+          clearInterval(pollInterval)
+        }
+      }
 
     } catch (err: any) {
       setError(err.message || 'Plex login failed')
