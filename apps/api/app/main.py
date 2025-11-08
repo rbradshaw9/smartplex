@@ -49,13 +49,26 @@ app = FastAPI(
 )
 
 # CORS middleware for frontend integration
+settings = get_settings()
+allowed_origins = [
+    "http://localhost:3000",  # Next.js dev
+]
+
+# Add production origins from environment
+if settings.environment == "production":
+    frontend_url = os.getenv("FRONTEND_URL", "https://smartplex-ecru.vercel.app")
+    allowed_origins.append(frontend_url)
+    allowed_origins.append("https://*.vercel.app")  # Vercel preview deployments
+else:
+    # Development: allow all Vercel preview URLs
+    allowed_origins.extend([
+        "https://smartplex-ecru.vercel.app",
+        "https://*.vercel.app",
+    ])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",  # Next.js dev
-        "https://smartplex-ecru.vercel.app",  # Production frontend
-        "https://*.vercel.app",  # Vercel preview deployments
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

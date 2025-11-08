@@ -1,8 +1,7 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS",
-    "buildCommand": "poetry install --only main --no-root"
+    "builder": "NIXPACKS"
   },
   "deploy": {
     "startCommand": "poetry run uvicorn app.main:app --host 0.0.0.0 --port $PORT",

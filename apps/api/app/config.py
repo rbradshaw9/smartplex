@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     supabase_service_key: str = Field(..., alias="SUPABASE_SERVICE_KEY")
     supabase_anon_key: Optional[str] = Field(default=None, alias="SUPABASE_ANON_KEY")
     
+    # Frontend configuration
+    frontend_url: str = Field(default="http://localhost:3000", alias="FRONTEND_URL")
+    
     # AI/LLM configuration
     openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
     anthropic_api_key: Optional[str] = Field(default=None, alias="ANTHROPIC_API_KEY")

@@ -48,47 +48,133 @@ async def plex_login(
         # Step 1: Verify Plex token and get user data
         plex_user_data = await get_plex_user_from_token(credentials.authToken)
         
-        # Step 2: Create or get user in Supabase
+        # Step 2: Create or get user in Supabase Auth
         email = plex_user_data.get('email') or f"{plex_user_data['username']}@smartplex.local"
         
-        # Try to find existing user
-        existing_user = supabase.table('users').select('*').eq('email', email).execute()
-        
-        if existing_user.data:
-            # User exists, update Plex info
-            user_data = existing_user.data[0]
-            supabase.table('users').update({
-                'plex_user_id': str(plex_user_data['id']),
-                'plex_username': plex_user_data['username'],
-                'last_active_at': 'now()',
-                'display_name': plex_user_data.get('title', plex_user_data['username'])
-            }).eq('id', user_data['id']).execute()
-        else:
-            # Create new user
-            new_user = supabase.table('users').insert({
+        # Try to find existing auth user by email
+        try:
+            # Check if auth user exists
+            auth_user_response = supabase.auth.admin.list_users()
+            existing_auth_user = next(
+                (u for u in auth_user_response if u.email == email), 
+                None
+            )
+            
+            if existing_auth_user:
+                # Update existing auth user metadata
+                user_id = existing_auth_user.id
+                supabase.auth.admin.update_user_by_id(
+                    user_id,
+                    {
+                        "user_metadata": {
+                            "plex_user_id": str(plex_user_data['id']),
+                            "plex_username": plex_user_data['username'],
+                            "display_name": plex_user_data.get('title', plex_user_data['username']),
+                        }
+                    }
+                )
+            else:
+                # Create new auth user
+                import secrets
+                temp_password = secrets.token_urlsafe(32)
+                
+                auth_response = supabase.auth.admin.create_user({
+                    "email": email,
+                    "password": temp_password,
+                    "email_confirm": True,
+                    "user_metadata": {
+                        "plex_user_id": str(plex_user_data['id']),
+                        "plex_username": plex_user_data['username'],
+                        "display_name": plex_user_data.get('title', plex_user_data['username']),
+                    }
+                })
+                user_id = auth_response.user.id
+            
+            # Step 3: Create/update user profile in public.users table
+            existing_profile = supabase.table('users').select('*').eq('id', user_id).execute()
+            
+            if existing_profile.data:
+                # Update existing profile
+                supabase.table('users').update({
+                    'plex_user_id': str(plex_user_data['id']),
+                    'plex_username': plex_user_data['username'],
+                    'display_name': plex_user_data.get('title', plex_user_data['username']),
+                    'updated_at': 'now()',
+                }).eq('id', user_id).execute()
+                user_data = existing_profile.data[0]
+            else:
+                # Create new profile
+                new_profile = supabase.table('users').insert({
+                    'id': user_id,
+                    'email': email,
+                    'display_name': plex_user_data.get('title', plex_user_data['username']),
+                    'plex_user_id': str(plex_user_data['id']),
+                    'plex_username': plex_user_data['username'],
+                    'role': 'user'
+                }).execute()
+                user_data = new_profile.data[0]
+            
+            # Step 4: Generate session token
+            from datetime import datetime, timedelta
+            expires_at = datetime.utcnow() + timedelta(hours=24)
+            
+            session_data = {
+                'user_id': user_id,
                 'email': email,
-                'display_name': plex_user_data.get('title', plex_user_data['username']),
-                'plex_user_id': str(plex_user_data['id']),
-                'plex_username': plex_user_data['username'],
-                'role': 'user'
-            }).execute()
-            user_data = new_user.data[0]
-        
-        # Step 3: Create Supabase auth session
-        # Note: This is a simplified approach - in production you'd want proper JWT handling
-        session_data = {
-            'user_id': user_data['id'],
-            'email': email,
-            'display_name': user_data.get('display_name'),
-            'plex_user_id': user_data.get('plex_user_id'),
-            'expires_at': None  # Implement proper expiration
-        }
-        
-        return PlexAuthResponse(
-            user=user_data,
-            supabase_session=session_data,
-            message="Successfully authenticated with Plex"
-        )
+                'display_name': user_data.get('display_name'),
+                'plex_user_id': user_data.get('plex_user_id'),
+                'plex_token': credentials.authToken,
+                'expires_at': expires_at.isoformat()
+            }
+            
+            return PlexAuthResponse(
+                user=user_data,
+                supabase_session=session_data,
+                message="Successfully authenticated with Plex"
+            )
+            
+        except Exception as e:
+            # If Supabase auth fails, fall back to table-only approach
+            # This allows the app to work even if auth.admin API has issues
+            print(f"Auth user creation failed, using table-only: {e}")
+            
+            existing_user = supabase.table('users').select('*').eq('email', email).execute()
+            
+            if existing_user.data:
+                user_data = existing_user.data[0]
+                supabase.table('users').update({
+                    'plex_user_id': str(plex_user_data['id']),
+                    'plex_username': plex_user_data['username'],
+                    'display_name': plex_user_data.get('title', plex_user_data['username']),
+                    'updated_at': 'now()',
+                }).eq('id', user_data['id']).execute()
+            else:
+                new_user = supabase.table('users').insert({
+                    'email': email,
+                    'display_name': plex_user_data.get('title', plex_user_data['username']),
+                    'plex_user_id': str(plex_user_data['id']),
+                    'plex_username': plex_user_data['username'],
+                    'role': 'user'
+                }).execute()
+                user_data = new_user.data[0]
+            
+            from datetime import datetime, timedelta
+            expires_at = datetime.utcnow() + timedelta(hours=24)
+            
+            session_data = {
+                'user_id': user_data['id'],
+                'email': email,
+                'display_name': user_data.get('display_name'),
+                'plex_user_id': user_data.get('plex_user_id'),
+                'plex_token': credentials.authToken,
+                'expires_at': expires_at.isoformat()
+            }
+            
+            return PlexAuthResponse(
+                user=user_data,
+                supabase_session=session_data,
+                message="Successfully authenticated with Plex"
+            )
         
     except Exception as e:
         raise HTTPException(
