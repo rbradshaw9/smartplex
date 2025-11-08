@@ -22,9 +22,14 @@ from app.api.routes import health, sync, ai, plex_auth, plex
 from app.core.supabase import get_supabase_client
 from app.core.exceptions import SmartPlexException
 from app.core.logging import setup_logging, get_logger
+import logging
 
 # Setup logging
 logger = get_logger("main")
+
+# Suppress noisy PlexAPI connection logs
+logging.getLogger("plexapi").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 
 @asynccontextmanager

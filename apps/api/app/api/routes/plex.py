@@ -185,7 +185,8 @@ async def get_watch_history(
         # Process each server
         for resource in account.resources():
             try:
-                server = resource.connect()
+                # Try to connect with shorter timeout to reduce wait time
+                server = resource.connect(timeout=10)
                 result["stats"]["servers_connected"] += 1
                 
                 # Get On Deck (in-progress items)
