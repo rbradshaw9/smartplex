@@ -3,6 +3,7 @@ Plex API endpoints for fetching servers, libraries, and media.
 """
 
 from typing import Any, Dict, List, Optional
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from plexapi.myplex import MyPlexAccount
@@ -10,6 +11,7 @@ from plexapi.server import PlexServer
 import httpx
 
 from app.core.supabase import get_supabase_client, get_current_user
+from app.core.cache import PlexCache
 from supabase import Client
 
 router = APIRouter(prefix="/plex", tags=["plex"])
@@ -134,7 +136,9 @@ async def get_server_libraries(
 async def get_watch_history(
     plex_token: str,
     limit: int = 50,
-    user: Dict[str, Any] = Depends(get_current_user)
+    force_refresh: bool = False,
+    user: Dict[str, Any] = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
 ) -> Dict[str, Any]:
     """
     Get comprehensive user viewing data from Plex including:
@@ -143,11 +147,28 @@ async def get_watch_history(
     - Watchlist items
     - On deck (in-progress items)
     
+    Uses caching to speed up repeated requests. Cache TTL: 15 minutes.
+    
     Args:
         plex_token: Plex authentication token
         limit: Maximum number of items per category
+        force_refresh: Skip cache and force fresh data from Plex
     """
     try:
+        # Initialize cache
+        cache = PlexCache(supabase, user['id'])
+        
+        # Try to get cached data first (unless force refresh)
+        if not force_refresh:
+            cached_data = await cache.get_cached_watch_history()
+            if cached_data:
+                # Add sync info
+                sync_info = await cache.get_last_sync_info()
+                if sync_info:
+                    cached_data['sync_info'] = sync_info
+                cached_data['from_cache'] = True
+                return cached_data
+        
         # Connect to Plex account
         account = MyPlexAccount(token=plex_token)
         
@@ -265,6 +286,48 @@ async def get_watch_history(
         
         # Round stats
         result["stats"]["total_hours"] = round(result["stats"]["total_hours"], 1)
+        result["from_cache"] = False
+        
+        # Cache the fresh data for next time
+        # Get or create server record (use first connected server for now)
+        if result["stats"]["servers_connected"] > 0:
+            try:
+                # Get first server's machine ID for caching
+                first_server = None
+                for resource in account.resources():
+                    try:
+                        server = resource.connect(timeout=5)
+                        first_server = server
+                        break
+                    except:
+                        continue
+                
+                if first_server:
+                    # Get or create server record in database
+                    server_result = supabase.table('servers').upsert({
+                        'user_id': user['id'],
+                        'name': first_server.friendlyName,
+                        'url': first_server._baseurl,
+                        'machine_id': first_server.machineIdentifier,
+                        'platform': first_server.platform,
+                        'version': first_server.version,
+                        'status': 'online',
+                        'last_seen_at': datetime.utcnow().isoformat(),
+                    }, on_conflict='user_id,machine_id').execute()
+                    
+                    if server_result.data:
+                        server_id = server_result.data[0]['id']
+                        # Cache the watch history
+                        await cache.cache_watch_history(result, server_id)
+                        
+            except Exception as cache_error:
+                # Don't fail the request if caching fails
+                print(f"Warning: Failed to cache watch history: {cache_error}")
+        
+        # Add sync info
+        sync_info = await cache.get_last_sync_info()
+        if sync_info:
+            result['sync_info'] = sync_info
         
         return result
         

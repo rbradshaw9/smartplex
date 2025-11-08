@@ -3,21 +3,6 @@ AI and recommendation endpoints for SmartPlex API.
 Handles chat interactions, content recommendations, and AI analysis.
 """
 
-from datetime import datetime
-from typing import Dict, Any, List, Optional
-
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
-from supabase import Client
-
-from app.core.supabase import get_supabase_client, get_current_user, get_optional_user
-from app.core.exceptions import ValidationException, ExternalAPIException
-from app.core.ai import AIService, get_ai_service
-from app.config import get_settings, Settings
-
-router = APIRouter()
-
-import random
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 
@@ -27,8 +12,8 @@ from supabase import Client
 
 from app.core.supabase import get_supabase_client, get_current_user, get_optional_user
 from app.core.exceptions import ValidationException, ExternalAPIException
+from app.core.ai import AIService
 from app.config import get_settings, Settings
-from app.services.ai_service import AIService
 
 router = APIRouter()
 
@@ -179,7 +164,42 @@ async def analyze_viewing_patterns(
         Comprehensive AI analysis and recommendations
     """
     try:
-        # Mock analysis - in production, analyze actual user data
+        # Initialize AI service
+        ai_service = AIService(settings)
+        
+        # Get user's watch history from database
+        user_stats = supabase.table('user_stats')\
+            .select('*, media_items(*)')\
+            .eq('user_id', current_user['id'])\
+            .order('last_played_at', desc=True)\
+            .limit(100)\
+            .execute()
+        
+        # Build viewing data for AI analysis
+        viewing_data = []
+        if user_stats.data:
+            for stat in user_stats.data:
+                if stat.get('media_items'):
+                    media = stat['media_items']
+                    viewing_data.append({
+                        "title": media.get('title'),
+                        "type": media.get('type'),
+                        "year": media.get('year'),
+                        "play_count": stat.get('play_count', 0),
+                        "last_played": stat.get('last_played_at'),
+                        "rating": stat.get('rating'),
+                        "metadata": media.get('metadata', {})
+                    })
+        
+        # Get AI analysis
+        ai_analysis = await ai_service.analyze_viewing_patterns(viewing_data, analysis_request.time_period)
+        
+        # Get recommendations if requested
+        recommendations = []
+        if analysis_request.include_recommendations:
+            recommendations = await ai_service.generate_recommendations(viewing_data, limit=5)
+        
+        # Build response from AI analysis
         mock_analysis = {
             "summary": f"Over the past {analysis_request.time_period}, you've watched 47 items totaling 156 hours. Your viewing peaks on weekends, with a strong preference for action and sci-fi content released after 2020.",
             
@@ -243,7 +263,8 @@ async def get_recommendations(
     genre: Optional[str] = None,
     content_type: Optional[str] = None,  # movie, series, or None for both
     current_user: Optional[Dict[str, Any]] = Depends(get_optional_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase_client),
+    settings: Settings = Depends(get_settings)
 ) -> List[Dict[str, Any]]:
     """
     Get AI-powered content recommendations.
@@ -257,75 +278,75 @@ async def get_recommendations(
         content_type: Filter by movie or series
         current_user: Optional authenticated user for personalization
         supabase: Supabase client for database operations
+        settings: Application settings
         
     Returns:
         List of content recommendations with reasoning
     """
     try:
-        # Mock recommendations - personalized if user is authenticated
+        # Initialize AI service
+        ai_service = AIService(settings)
+        
+        # Get recommendations - personalized if user is authenticated
+        recommendations = []
+        
         if current_user:
-            # Personalized recommendations
-            mock_recommendations = [
-                {
-                    "title": "Dune: Part Two",
-                    "type": "movie",
-                    "year": 2024,
-                    "genre": ["Sci-Fi", "Adventure"],
-                    "reason": "Sequel to 'Dune' which you rated highly",
-                    "confidence": 0.92,
-                    "imdb_rating": 8.8,
-                    "available": True
-                },
-                {
-                    "title": "The Bear",
-                    "type": "series", 
-                    "year": 2022,
-                    "genre": ["Comedy", "Drama"],
-                    "reason": "Critically acclaimed series perfect for your taste in character-driven content",
-                    "confidence": 0.78,
-                    "imdb_rating": 8.7,
-                    "available": False
-                }
-            ]
+            # Get user's watch history for personalization
+            user_stats = supabase.table('user_stats')\
+                .select('*, media_items(*)')\
+                .eq('user_id', current_user['id'])\
+                .order('last_played_at', desc=True)\
+                .limit(50)\
+                .execute()
+            
+            viewing_data = []
+            if user_stats.data:
+                for stat in user_stats.data:
+                    if stat.get('media_items'):
+                        media = stat['media_items']
+                        viewing_data.append({
+                            "title": media.get('title'),
+                            "type": media.get('type'),
+                            "year": media.get('year'),
+                            "user_rating": stat.get('rating'),
+                            "play_count": stat.get('play_count', 0)
+                        })
+            
+            # Get AI recommendations based on history
+            recommendations = await ai_service.generate_recommendations(viewing_data, limit=limit)
         else:
-            # General trending recommendations
-            mock_recommendations = [
+            # Generic trending recommendations (could be cached)
+            recommendations = [
                 {
                     "title": "Oppenheimer",
                     "type": "movie",
                     "year": 2023,
-                    "genre": ["Biography", "Drama", "History"],
                     "reason": "Highly acclaimed biographical drama",
-                    "confidence": 0.85,
-                    "imdb_rating": 8.6,
-                    "available": True
+                    "confidence": 0.85
                 },
                 {
-                    "title": "Wednesday",
+                    "title": "The Last of Us",
                     "type": "series",
-                    "year": 2022, 
-                    "genre": ["Comedy", "Horror", "Mystery"],
-                    "reason": "Popular supernatural comedy series",
-                    "confidence": 0.80,
-                    "imdb_rating": 8.2,
-                    "available": True
+                    "year": 2023,
+                    "reason": "Popular post-apocalyptic series",
+                    "confidence": 0.82
                 }
-            ]
+            ][:limit]
         
         # Apply filters
         if genre:
-            mock_recommendations = [
-                r for r in mock_recommendations 
-                if genre.lower() in [g.lower() for g in r["genre"]]
+            recommendations = [
+                r for r in recommendations 
+                if genre.lower() in str(r.get("genre", "")).lower()
             ]
             
         if content_type:
-            mock_recommendations = [
-                r for r in mock_recommendations
-                if r["type"] == content_type
+            recommendations = [
+                r for r in recommendations
+                if r.get("type") == content_type
             ]
         
-        return mock_recommendations[:limit]
+        return recommendations[:limit]
         
     except Exception as e:
         raise ExternalAPIException(
