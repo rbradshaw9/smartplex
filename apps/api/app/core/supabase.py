@@ -3,7 +3,6 @@ Supabase client management for SmartPlex API.
 Provides typed database client and authentication helpers.
 """
 
-from functools import lru_cache
 from typing import Any, Dict, Optional
 
 from supabase import Client, create_client
@@ -16,21 +15,30 @@ from app.core.exceptions import AuthenticationException, DatabaseException
 # HTTPBearer security scheme for JWT tokens
 security = HTTPBearer()
 
+# Singleton Supabase client instance
+_supabase_client: Optional[Client] = None
 
-@lru_cache()
+
 def get_supabase_client(settings: Settings = Depends(get_settings)) -> Client:
-    """Get cached Supabase client instance."""
-    try:
-        supabase = create_client(
-            supabase_url=settings.supabase_url,
-            supabase_key=settings.supabase_service_key,
-        )
-        return supabase
-    except Exception as e:
-        raise DatabaseException(
-            message="Failed to initialize Supabase client",
-            details=str(e)
-        )
+    """Get cached Supabase client instance (singleton pattern)."""
+    global _supabase_client
+    
+    if _supabase_client is None:
+        try:
+            print("🔗 Initializing Supabase client...")
+            _supabase_client = create_client(
+                supabase_url=settings.supabase_url,
+                supabase_key=settings.supabase_service_key,
+            )
+            print("✅ Supabase client initialized")
+        except Exception as e:
+            print(f"❌ Failed to initialize Supabase client: {e}")
+            raise DatabaseException(
+                message="Failed to initialize Supabase client",
+                details=str(e)
+            )
+    
+    return _supabase_client
 
 
 async def get_current_user(

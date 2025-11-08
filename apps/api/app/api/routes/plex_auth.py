@@ -8,11 +8,15 @@ This endpoint handles Plex authentication:
 4. Returns Supabase session token
 """
 
+import base64
+import secrets
+import traceback
+from datetime import datetime, timedelta
+from typing import Dict, Any, Optional
+
+import httpx
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
-import httpx
-import base64
-from typing import Dict, Any, Optional
 
 from app.core.supabase import get_supabase_client
 from app.config import get_settings
