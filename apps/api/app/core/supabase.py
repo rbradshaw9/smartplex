@@ -30,6 +30,8 @@ def get_supabase_client(settings: Settings = Depends(get_settings)) -> Client:
     if _supabase_client is None:
         try:
             print("🔗 Initializing Supabase client...")
+            print(f"🔍 Supabase URL: {settings.supabase_url}")
+            print(f"🔍 Service Key length: {len(settings.supabase_service_key)}")
             # Simple initialization without extra parameters
             _supabase_client = create_client(
                 settings.supabase_url,
