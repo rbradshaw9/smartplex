@@ -8,6 +8,9 @@ export const metadata: Metadata = {
   title: 'SmartPlex | AI-Powered Plex Ecosystem',
   description: 'The autonomous, AI-powered Plex server ecosystem that intelligently manages your media.',
   keywords: ['Plex', 'AI', 'Media Server', 'Automation', 'SmartPlex'],
+  other: {
+    'build-version': '2.1.0', // Cache buster
+  },
 }
 
 export default function RootLayout({
