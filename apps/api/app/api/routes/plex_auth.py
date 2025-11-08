@@ -71,6 +71,9 @@ async def plex_login(
                 None
             )
             
+            # Initialize temp password variable
+            user_temp_password = None
+            
             if existing_auth_user:
                 # Update existing auth user metadata
                 print(f"✅ Found existing auth user: {existing_auth_user.id}")
@@ -103,6 +106,19 @@ async def plex_login(
                 })
                 user_id = auth_response.user.id
                 print(f"✅ Created auth user: {user_id}")
+                # Store temp password for returning to client
+                user_temp_password = temp_password
+            
+            # For existing users, we need to reset their password to a new temp one
+            # so they can sign in on the frontend
+            if existing_auth_user:
+                print("🔄 Resetting password for existing user...")
+                user_temp_password = secrets.token_urlsafe(32)
+                supabase.auth.admin.update_user_by_id(
+                    user_id,
+                    {"password": user_temp_password}
+                )
+                print("✅ Password reset")
             
             # Step 3: Create/update user profile in public.users table
             print("🔍 Checking for existing user profile...")
@@ -149,13 +165,14 @@ async def plex_login(
                 print(f"❌ Database operation failed: {db_error}")
                 raise Exception(f"Failed to create/update user profile: {str(db_error)}")
             
-            # Step 4: Generate session token
-            print("🎫 Generating session token...")
+            # Step 4: Return credentials for frontend to establish Supabase session
+            print("🎫 Preparing session credentials...")
             expires_at = datetime.utcnow() + timedelta(hours=24)
             
             session_data = {
                 'user_id': user_id,
                 'email': email,
+                'temp_password': user_temp_password,  # Frontend will use this to sign in
                 'display_name': user_data.get('display_name'),
                 'plex_user_id': user_data.get('plex_user_id'),
                 'plex_token': credentials.authToken,

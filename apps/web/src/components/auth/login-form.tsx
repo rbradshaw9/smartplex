@@ -100,10 +100,19 @@ export function LoginForm() {
             
             const { user, supabase_session } = await loginResponse.json()
             
-            // Store session info for authenticated requests
+            // Sign in to Supabase using the temporary password
+            // This creates proper session cookies that the dashboard can use
+            const { error: signInError } = await supabase.auth.signInWithPassword({
+              email: supabase_session.email,
+              password: supabase_session.temp_password,
+            })
+
+            if (signInError) {
+              throw new Error(`Failed to establish Supabase session: ${signInError.message}`)
+            }
+            
+            // Store Plex token for API requests
             if (typeof window !== 'undefined') {
-              localStorage.setItem('smartplex_user', JSON.stringify(user))
-              localStorage.setItem('smartplex_session', JSON.stringify(supabase_session))
               localStorage.setItem('plex_token', checkData.authToken)
             }
 
