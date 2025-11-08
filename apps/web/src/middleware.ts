@@ -2,6 +2,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 // Middleware for Supabase auth session refresh
+// Version: 2.0 - Fixed cookies() await issue
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
     request: {
