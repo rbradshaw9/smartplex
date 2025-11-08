@@ -34,17 +34,21 @@ export function WatchStats({ stats }: WatchStatsProps) {
       <div>
         <h3 className="text-lg font-semibold text-white mb-4">Recently Watched</h3>
         <div className="space-y-3">
-          {stats.recentlyWatched.map((item, index) => (
-            <div key={index} className="flex items-center justify-between bg-slate-700 rounded-lg p-4">
-              <div>
-                <div className="text-white font-medium">{item.title}</div>
-                <div className="text-slate-400 text-sm capitalize">{item.type}</div>
+          {stats.recentlyWatched.length === 0 ? (
+            <div className="text-slate-400 text-sm">Loading your watch history...</div>
+          ) : (
+            stats.recentlyWatched.map((item, index) => (
+              <div key={index} className="flex items-center justify-between bg-slate-700 rounded-lg p-4">
+                <div>
+                  <div className="text-white font-medium">{item.title}</div>
+                  <div className="text-slate-400 text-sm capitalize">{item.type}</div>
+                </div>
+                <div className="text-slate-400 text-sm">
+                  {item.watchedAt ? new Date(item.watchedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown'}
+                </div>
               </div>
-              <div className="text-slate-400 text-sm">
-                {new Date(item.watchedAt).toLocaleDateString()}
-              </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </div>
