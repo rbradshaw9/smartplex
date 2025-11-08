@@ -33,7 +33,8 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
   const [recommendations, setRecommendations] = useState(initialRecommendations)
   const [fetchingData, setFetchingData] = useState(true)
   const router = useRouter()
-  const supabase = createClientComponentClient<Database>()
+  // Create Supabase client only once to avoid SSR mismatch
+  const [supabase] = useState(() => createClientComponentClient<Database>())
 
   // Fetch real Plex data on mount
   useEffect(() => {
