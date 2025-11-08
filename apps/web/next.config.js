@@ -1,11 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Force fresh build - cache buster v3
+  // Force fresh build - cache buster v4
   generateBuildId: async () => {
-    return 'build-' + Date.now() + '-v3-' + Math.random().toString(36).substring(7)
+    return 'build-' + Date.now() + '-v4-' + Math.random().toString(36).substring(7)
   },
-  // Disable static optimization to force rebuild
-  // output: 'standalone',
+  // Disable webpack cache completely
+  webpack: (config, { isServer }) => {
+    // Disable webpack persistent cache
+    config.cache = false
+    return config
+  },
   images: {
     domains: [
       'localhost',
