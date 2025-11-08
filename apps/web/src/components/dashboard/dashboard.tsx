@@ -101,7 +101,7 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
         // Fetch AI recommendations
         try {
           const recsResponse = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL}/api/ai/recommendations`,
+            `${process.env.NEXT_PUBLIC_API_URL}/ai/recommendations`,
             {
               method: 'POST',
               headers: {

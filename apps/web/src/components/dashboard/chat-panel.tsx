@@ -34,7 +34,7 @@ export function ChatPanel() {
 
     try {
       // Call the real AI chat API
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/ai/chat`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/ai/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
