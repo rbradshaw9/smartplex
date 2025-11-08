@@ -22,6 +22,9 @@ export function LoginForm() {
     setLoading(true)
 
     try {
+      // Generate consistent client identifier for this session
+      const clientId = process.env.NEXT_PUBLIC_PLEX_CLIENT_ID || 'smartplex-web-client'
+      
       // Step 1: Get a PIN from Plex
       const pinResponse = await fetch('https://plex.tv/api/v2/pins', {
         method: 'POST',
@@ -29,7 +32,7 @@ export function LoginForm() {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
           'X-Plex-Product': 'SmartPlex',
-          'X-Plex-Client-Identifier': crypto.randomUUID(),
+          'X-Plex-Client-Identifier': clientId,
         },
         body: JSON.stringify({
           strong: true,
@@ -42,7 +45,7 @@ export function LoginForm() {
       setPlexPin({ id: pinData.id, code: pinData.code })
 
       // Step 2: Open Plex auth in new window
-      const authUrl = `https://app.plex.tv/auth#?clientID=${crypto.randomUUID()}&code=${pinData.code}&context%5Bdevice%5D%5Bproduct%5D=SmartPlex`
+      const authUrl = `https://app.plex.tv/auth#?clientID=${clientId}&code=${pinData.code}&context%5Bdevice%5D%5Bproduct%5D=SmartPlex`
       window.open(authUrl, 'PlexAuth', 'width=600,height=700')
 
       // Step 3: Poll for auth token
@@ -50,7 +53,7 @@ export function LoginForm() {
         const checkResponse = await fetch(`https://plex.tv/api/v2/pins/${pinData.id}`, {
           headers: {
             'Accept': 'application/json',
-            'X-Plex-Client-Identifier': crypto.randomUUID(),
+            'X-Plex-Client-Identifier': clientId,
           },
         })
 
@@ -113,27 +116,34 @@ export function LoginForm() {
         const { error } = await supabase.auth.signUp({
           email,
           password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
+          }
         })
         if (error) throw error
         
-        // After signup, user needs to connect Plex
-        router.push('/setup/connect-plex')
+        // Show success message
+        setError('')
+        alert('Check your email for the confirmation link!')
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { error, data } = await supabase.auth.signInWithPassword({
           email,
           password,
         })
         if (error) throw error
 
-        // Check if user has Plex connected
-        const { data: user } = await supabase.auth.getUser()
-        const hasPlex = user?.user?.user_metadata?.plex_username
-
-        if (!hasPlex) {
-          router.push('/setup/connect-plex')
-        } else {
-          router.push('/dashboard')
+        // Store session info for authenticated requests (similar to Plex login)
+        if (data.user && typeof window !== 'undefined') {
+          localStorage.setItem('smartplex_user', JSON.stringify({
+            id: data.user.id,
+            email: data.user.email,
+            display_name: data.user.user_metadata?.display_name,
+          }))
         }
+
+        // Redirect to dashboard
+        router.push('/dashboard')
+        router.refresh()
       }
     } catch (err: any) {
       setError(err.message)
