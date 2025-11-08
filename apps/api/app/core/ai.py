@@ -26,7 +26,7 @@ class AIService:
         self,
         message: str,
         user_context: Optional[Dict[str, Any]] = None,
-        chat_history: Optional[List[Dict[str, str]]] = None
+        conversation_history: Optional[List[Dict[str, str]]] = None
     ) -> Dict[str, Any]:
         """
         Chat with AI about media library and recommendations.
@@ -45,11 +45,11 @@ class AIService:
         # Build messages array
         messages = [{"role": "system", "content": system_prompt}]
         
-        # Add chat history if provided
-        if chat_history:
-            for msg in chat_history[-10:]:  # Last 10 messages for context
+        # Add conversation history if provided
+        if conversation_history:
+            for msg in conversation_history[-10:]:  # Last 10 messages for context
                 messages.append({
-                    "role": "user" if msg.get("is_user") else "assistant",
+                    "role": msg.get("role", "user"),
                     "content": msg.get("content", "")
                 })
         
@@ -59,14 +59,14 @@ class AIService:
         # Call OpenAI
         response = await self.client.chat.completions.create(
             model=self.model,
-            messages=messages,
+            messages=messages,  # type: ignore
             temperature=0.7,
             max_tokens=500
         )
         
         return {
-            "response": response.choices[0].message.content,
-            "tokens_used": response.usage.total_tokens,
+            "response": response.choices[0].message.content or "",
+            "tokens_used": response.usage.total_tokens if response.usage else 0,
             "model": self.model,
             "timestamp": datetime.utcnow()
         }
@@ -102,7 +102,7 @@ Format as JSON with keys: summary, insights (array), trends (array)"""
         
         response = await self.client.chat.completions.create(
             model=self.model,
-            messages=[
+            messages=[  # type: ignore
                 {"role": "system", "content": "You are a media consumption analyst. Provide concise, actionable insights."},
                 {"role": "user", "content": prompt}
             ],
@@ -111,11 +111,12 @@ Format as JSON with keys: summary, insights (array), trends (array)"""
         )
         
         # Parse JSON response
-        analysis = json.loads(response.choices[0].message.content)
+        content = response.choices[0].message.content or "{}"
+        analysis = json.loads(content)
         
         return {
             **analysis,
-            "tokens_used": response.usage.total_tokens,
+            "tokens_used": response.usage.total_tokens if response.usage else 0,
             "generated_at": datetime.utcnow()
         }
     
@@ -160,7 +161,7 @@ Format as JSON array with: title, type, year, reason, confidence"""
         
         response = await self.client.chat.completions.create(
             model=self.model,
-            messages=[
+            messages=[  # type: ignore
                 {"role": "system", "content": "You are a personalized content recommendation engine. Suggest diverse, high-quality content."},
                 {"role": "user", "content": prompt}
             ],
@@ -169,7 +170,8 @@ Format as JSON array with: title, type, year, reason, confidence"""
         )
         
         # Parse recommendations
-        result = json.loads(response.choices[0].message.content)
+        content = response.choices[0].message.content or '{"recommendations": []}'
+        result = json.loads(content)
         recommendations = result.get("recommendations", [])
         
         # Match with available content if provided

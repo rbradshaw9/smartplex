@@ -199,54 +199,30 @@ async def analyze_viewing_patterns(
         if analysis_request.include_recommendations:
             recommendations = await ai_service.generate_recommendations(viewing_data, limit=5)
         
-        # Build response from AI analysis
-        mock_analysis = {
-            "summary": f"Over the past {analysis_request.time_period}, you've watched 47 items totaling 156 hours. Your viewing peaks on weekends, with a strong preference for action and sci-fi content released after 2020.",
-            
-            "insights": [
-                "You watch 65% movies vs 35% TV series",
-                "Action is your top genre (32% of viewing time)",
-                "You prefer content with IMDB ratings above 7.0",
-                "Weekend viewing is 3x higher than weekdays",
-                "You rarely rewatch content (only 8% rewatches)"
-            ],
-            
-            "recommendations": [
-                {
-                    "title": "Oppenheimer",
-                    "type": "movie", 
-                    "reason": "Highly rated recent drama matching your preference for quality content",
-                    "confidence": 0.87
-                },
-                {
-                    "title": "The Last of Us",
-                    "type": "series",
-                    "reason": "Post-apocalyptic series with excellent ratings and action elements",
-                    "confidence": 0.82
-                },
-                {
-                    "title": "Top Gun: Maverick", 
-                    "type": "movie",
-                    "reason": "Action-packed sequel to a classic, perfect for weekend viewing",
-                    "confidence": 0.79
-                }
-            ] if analysis_request.include_recommendations else [],
-            
-            "statistics": {
-                "total_items_watched": 47,
-                "total_hours": 156,
-                "average_rating": 7.8,
-                "top_genre": "Action",
-                "viewing_efficiency": "High",  # How much of started content is completed
-                "discovery_rate": "Medium",   # How often user tries new content
+        # Calculate basic statistics
+        total_items = len(viewing_data)
+        total_hours = sum(item.get('play_count', 1) * (item.get('duration', 0) / 1000 / 60 / 60) for item in viewing_data if item.get('duration'))
+        
+        rated_items = [item for item in viewing_data if item.get('rating')]
+        avg_rating = sum(item['rating'] for item in rated_items) / len(rated_items) if rated_items else 0
+        
+        # Build statistics
+        statistics = {
+            "total_items_watched": total_items,
+            "total_hours": round(total_hours, 1),
+            "average_rating": round(avg_rating, 1) if avg_rating else None,
+            "movies_vs_series": {
+                "movies": sum(1 for item in viewing_data if item.get('type') == 'movie'),
+                "series": sum(1 for item in viewing_data if item.get('type') in ['episode', 'show'])
             }
         }
         
+        # Return AI-generated analysis
         return AnalysisResponse(
-            summary=mock_analysis["summary"],
-            insights=mock_analysis["insights"],
-            recommendations=mock_analysis["recommendations"],
-            statistics=mock_analysis["statistics"],
+            summary=ai_analysis.get("summary", "No summary available"),
+            insights=ai_analysis.get("insights", []),
+            recommendations=recommendations,
+            statistics=statistics,
             generated_at=datetime.utcnow()
         )
         
