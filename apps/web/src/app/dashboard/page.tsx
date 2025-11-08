@@ -1,26 +1,50 @@
-import { redirect } from 'next/navigation'
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { Dashboard } from '@/components/dashboard/dashboard'
 import { Database } from '@smartplex/db/types'
+import { User } from '@supabase/supabase-js'
 
-export default async function DashboardPage() {
-  const cookieStore = await cookies()
-  const supabase = createServerComponentClient<Database>({
-    cookies: () => cookieStore,
-  })
+// Force client-side only rendering to avoid SSR hydration issues
+export default function DashboardPage() {
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+  const router = useRouter()
+  const [supabase] = useState(() => createClientComponentClient<Database>())
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        router.push('/')
+        return
+      }
+      
+      setUser(session.user)
+      setLoading(false)
+    }
 
-  if (!session) {
-    redirect('/')
+    checkAuth()
+  }, [router, supabase])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400 mx-auto mb-4"></div>
+          <p className="text-slate-300">Loading dashboard...</p>
+        </div>
+      </div>
+    )
   }
 
-  // Plex token is stored in localStorage on the client
-  // The dashboard component will fetch real data using useEffect
-  // Server component just passes initial empty/loading state
+  if (!user) {
+    return null
+  }
+
   const mockUserStats = {
     totalWatched: 0,
     hoursWatched: 0,
@@ -34,7 +58,7 @@ export default async function DashboardPage() {
 
   return (
     <Dashboard 
-      user={session.user} 
+      user={user} 
       userStats={mockUserStats}
       recommendations={mockRecommendations}
     />
