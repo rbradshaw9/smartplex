@@ -68,34 +68,23 @@ export function LoginForm() {
             }),
           })
 
-          if (!loginResponse.ok) throw new Error('Failed to authenticate with backend')
+          if (!loginResponse.ok) {
+            const errorData = await loginResponse.json().catch(() => ({}))
+            throw new Error(errorData.detail || 'Failed to authenticate with backend')
+          }
           
-          const { user, session } = await loginResponse.json()
+          const { user, supabase_session } = await loginResponse.json()
           
-          // Step 5: Create Supabase session
-          const { error: supabaseError } = await supabase.auth.signInWithPassword({
-            email: user.email,
-            password: checkData.authToken, // Use Plex token as password
-          })
-
-          if (supabaseError) {
-            // If user doesn't exist in Supabase yet, create them
-            const { error: signUpError } = await supabase.auth.signUp({
-              email: user.email,
-              password: checkData.authToken,
-              options: {
-                data: {
-                  plex_username: user.plex_username,
-                  plex_user_id: user.plex_user_id,
-                  avatar_url: user.avatar_url,
-                }
-              }
-            })
-            if (signUpError) throw signUpError
+          // Store session info for authenticated requests
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('smartplex_user', JSON.stringify(user))
+            localStorage.setItem('smartplex_session', JSON.stringify(supabase_session))
+            localStorage.setItem('plex_token', checkData.authToken)
           }
 
           setLoading(false)
           router.push('/dashboard')
+          router.refresh()
         }
       }, 2000) // Poll every 2 seconds
 
