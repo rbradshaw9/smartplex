@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { useRouter } from 'next/navigation'
 import { User } from '@supabase/supabase-js'
@@ -27,10 +27,83 @@ interface DashboardProps {
   }>
 }
 
-export function Dashboard({ user, userStats, recommendations }: DashboardProps) {
+export function Dashboard({ user, userStats: initialStats, recommendations: initialRecommendations }: DashboardProps) {
   const [loading, setLoading] = useState(false)
+  const [userStats, setUserStats] = useState(initialStats)
+  const [recommendations, setRecommendations] = useState(initialRecommendations)
+  const [fetchingData, setFetchingData] = useState(true)
   const router = useRouter()
   const supabase = createClientComponentClient<Database>()
+
+  // Fetch real Plex data on mount
+  useEffect(() => {
+    const fetchPlexData = async () => {
+      try {
+        // Get Plex token from localStorage
+        const plexToken = localStorage.getItem('plex_token')
+        if (!plexToken) {
+          console.error('No Plex token found')
+          setFetchingData(false)
+          return
+        }
+
+        // Fetch watch history and stats
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/plex/watch-history?plex_token=${plexToken}&limit=50`,
+          {
+            headers: {
+              'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+            },
+          }
+        )
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch Plex data')
+        }
+
+        const data = await response.json()
+
+        // Calculate favorite genre from watch history
+        const genreCounts: Record<string, number> = {}
+        data.watch_history.forEach((item: any) => {
+          item.genres?.forEach((genre: string) => {
+            genreCounts[genre] = (genreCounts[genre] || 0) + 1
+          })
+        })
+        const favoriteGenre = Object.entries(genreCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Unknown'
+
+        // Update stats
+        setUserStats({
+          totalWatched: data.stats.total_watched,
+          hoursWatched: data.stats.total_hours,
+          favoriteGenre,
+          recentlyWatched: data.watch_history.slice(0, 10).map((item: any) => ({
+            title: item.title,
+            type: item.type,
+            watchedAt: item.last_viewed_at,
+          })),
+        })
+
+        // Generate simple recommendations based on liked content
+        const likedItems = data.ratings.liked.slice(0, 3)
+        const newRecommendations = likedItems.map((item: any) => ({
+          title: `More like ${item.title}`,
+          reason: `You rated this ${item.user_rating}/10`,
+        }))
+        
+        if (newRecommendations.length > 0) {
+          setRecommendations(newRecommendations)
+        }
+
+        setFetchingData(false)
+      } catch (error) {
+        console.error('Failed to fetch Plex data:', error)
+        setFetchingData(false)
+      }
+    }
+
+    fetchPlexData()
+  }, [])
 
   const handleSignOut = async () => {
     setLoading(true)

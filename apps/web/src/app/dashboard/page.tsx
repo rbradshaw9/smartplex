@@ -17,22 +17,35 @@ export default async function DashboardPage() {
     redirect('/')
   }
 
-  // Mock user data for demo
+  // Fetch user's Plex token from localStorage (client-side)
+  // Note: This should be fetched from the database in production
+  // For now, we'll pass mock data and let the client fetch real data
+  
+  // Fetch user profile to get Plex token
+  let plexToken = null
+  try {
+    const { data: userData } = await supabase
+      .table('users')
+      .select('*')
+      .eq('id', session.user.id)
+      .single()
+    
+    // Note: plex_token is stored in localStorage on client, not in DB
+    // We'll need to fetch it client-side
+  } catch (error) {
+    console.error('Failed to fetch user data:', error)
+  }
+
+  // Use mock data for now - the dashboard component will fetch real data client-side
   const mockUserStats = {
-    totalWatched: 156,
-    hoursWatched: 248,
-    favoriteGenre: 'Action',
-    recentlyWatched: [
-      { title: 'The Batman', type: 'movie', watchedAt: '2024-01-15' },
-      { title: 'House of the Dragon S1E1', type: 'episode', watchedAt: '2024-01-14' },
-      { title: 'Dune: Part One', type: 'movie', watchedAt: '2024-01-13' },
-    ],
+    totalWatched: 0,
+    hoursWatched: 0,
+    favoriteGenre: 'Loading...',
+    recentlyWatched: [],
   }
 
   const mockRecommendations = [
-    { title: 'Oppenheimer', reason: 'Popular drama like your recent watches' },
-    { title: 'The Last of Us', reason: 'Trending series matching your preferences' },
-    { title: 'Top Gun: Maverick', reason: 'Action movie based on your favorite genre' },
+    { title: 'Loading...', reason: 'Fetching your personalized recommendations' },
   ]
 
   return (
