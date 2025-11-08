@@ -1,0 +1,26 @@
+# Ignore frontend and agent apps - deploy only the API
+apps/web/
+apps/agent/
+packages/
+
+# Ignore development files
+*.md
+.git/
+.github/
+.vscode/
+.idea/
+
+# Ignore environment files
+.env*
+!.env.example
+
+# Ignore build outputs
+dist/
+build/
+.next/
+node_modules/
+
+# Ignore documentation
+docs/
+README.md
+keys.md
