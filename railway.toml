@@ -1,11 +1,11 @@
 # Railway configuration for SmartPlex API service
-# This file tells Railway how to build and deploy the API
+# Dockerfile is at repo root, builds from apps/api/
 
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "apps/api/Dockerfile"
+dockerfilePath = "Dockerfile"
+watchPaths = ["apps/api/**"]
 
 [deploy]
-startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
