@@ -2,21 +2,36 @@
 
 Follow these steps IN ORDER to diagnose and fix the authentication issue:
 
-## Step 1: Check Railway Logs (MOST IMPORTANT!)
+## Step 0: Find Your Actual Railway URL (CRITICAL!)
+
+**The URL `smartplex-production.up.railway.app` doesn't exist!**
+
+1. Go to: https://railway.app/
+2. Navigate to your project → API service
+3. Click "Settings" tab
+4. Scroll to "Networking" or "Domains" section
+5. **Look for your actual domain**, or click "Generate Domain" if missing
+6. Copy the actual URL (will look like `your-service-abc123.up.railway.app`)
+
+**Write down this URL - you'll need it for Step 3!**
+
+---
+
+## Step 1: Check Railway Logs
 
 1. Go to: https://railway.app/
 2. Navigate to your project → API service
 3. Click "Deployments" → Latest deployment → "View Logs"
 4. **Look for error messages** when you try to authenticate
 
-### What to look for:
-- ❌ `ValidationError: 1 validation error for Settings` → Missing env vars
-- ❌ `KeyError: 'SUPABASE_SERVICE_KEY'` → Missing env var
-- ❌ `connection refused` → Supabase URL wrong
-- ❌ `401 Unauthorized` → Supabase key invalid
-- ✅ Emojis like `🔐 Starting Plex authentication flow...` → Good! Keep reading
+### Your current logs show:
+✅ `🔑 Supabase Service Key: SET` - Good!
+✅ `🌐 Frontend URL: https://smartplex-ecru.vercel.app` - Good!
+✅ `INFO: Uvicorn running on http://0.0.0.0:8080` - Good!
 
-**Action:** Copy the error message and check what's missing.
+**Your API is starting correctly!** The issue is the URL mismatch.
+
+**Action:** Confirm the API service has a public domain generated in Settings → Networking.
 
 ---
 
@@ -42,20 +57,22 @@ Required variables:
 
 ---
 
-## Step 3: Fix Vercel Environment Variable
+## Step 3: Fix Vercel Environment Variable with Correct Railway URL
 
-The frontend is using the wrong API URL!
+The frontend is using a URL that doesn't exist!
 
 **Current (WRONG):** `smartplexapi-production.up.railway.app`
-**Correct:** `smartplex-production.up.railway.app`
+**Correct:** Use the actual Railway URL from Step 0!
 
 1. Go to: https://vercel.com/
 2. Select project → Settings → Environment Variables
 3. Find `NEXT_PUBLIC_API_URL`
-4. Change to: `https://smartplex-production.up.railway.app`
+4. Change to: `https://YOUR-ACTUAL-RAILWAY-URL.up.railway.app` (from Step 0)
 5. Save
 6. Go to Deployments → Latest deployment → Three dots → "Redeploy"
 7. ✅ Important: MUST redeploy for env var changes to take effect!
+
+**Example:** If Railway shows `smartplex-api-abc123.up.railway.app`, use that exact URL.
 
 ---
 
@@ -154,14 +171,21 @@ python test_diagnostics.py "your-plex-token-here"
 
 ## Quick Test Commands
 
+**Replace `YOUR-RAILWAY-URL` with the actual URL from Step 0!**
+
 Test API health:
 ```bash
-curl https://smartplex-production.up.railway.app/health
+curl https://YOUR-RAILWAY-URL.up.railway.app/health
+```
+
+Expected response:
+```json
+{"status":"healthy"}
 ```
 
 Test CORS:
 ```bash
-curl -X OPTIONS https://smartplex-production.up.railway.app/api/auth/plex/login \
+curl -X OPTIONS https://YOUR-RAILWAY-URL.up.railway.app/api/auth/plex/login \
   -H "Origin: https://smartplex-ecru.vercel.app" \
   -H "Access-Control-Request-Method: POST" \
   -v
