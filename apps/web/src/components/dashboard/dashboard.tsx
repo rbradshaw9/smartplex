@@ -65,18 +65,21 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
         const data = await response.json()
 
         console.log('Plex API response:', data)
+        console.log('First watch_history item:', data.watch_history?.[0])
 
         // Calculate favorite genre from watch history
         const genreCounts: Record<string, number> = {}
         if (data.watch_history && Array.isArray(data.watch_history)) {
           data.watch_history.forEach((item: any) => {
-            if (item.genres && Array.isArray(item.genres)) {
-              item.genres.forEach((genre: string) => {
-                if (genre) {
-                  genreCounts[genre] = (genreCounts[genre] || 0) + 1
-                }
-              })
-            }
+            // Check multiple possible genre field names
+            const genres = item.genres || item.genre || []
+            const genreArray = Array.isArray(genres) ? genres : [genres].filter(Boolean)
+            
+            genreArray.forEach((genre: string) => {
+              if (genre && typeof genre === 'string') {
+                genreCounts[genre] = (genreCounts[genre] || 0) + 1
+              }
+            })
           })
         }
         
