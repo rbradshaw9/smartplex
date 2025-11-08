@@ -33,30 +33,40 @@ export function ChatPanel() {
     setIsLoading(true)
 
     try {
-      // Mock AI response - in production this would call the FastAPI backend
-      const mockResponses = [
-        'Based on your viewing history, I recommend checking out "The Last of Us" - it\'s trending and matches your preference for action series.',
-        'Your most-watched genre is Action, and you\'ve spent 248 hours watching content this year. Would you like me to suggest some hidden gems in the action category?',
-        'I notice you recently watched "The Batman". You might enjoy "Gotham" or "The Dark Knight" trilogy if they\'re available in your library.',
-        'Would you like me to analyze your viewing patterns and suggest content that might be getting stale for cleanup?',
-      ]
+      // Call the real AI chat API
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/ai/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: inputMessage,
+          chat_history: messages.map(m => ({
+            role: m.role,
+            content: m.content,
+          })),
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`)
+      }
+
+      const data = await response.json()
       
-      const randomResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)]
-      
-      setTimeout(() => {
-        const assistantMessage: ChatMessage = {
-          role: 'assistant',
-          content: randomResponse,
-          timestamp: new Date(),
-        }
-        setMessages(prev => [...prev, assistantMessage])
-        setIsLoading(false)
-      }, 1000)
+      const assistantMessage: ChatMessage = {
+        role: 'assistant',
+        content: data.response || 'I apologize, but I couldn\'t generate a response.',
+        timestamp: new Date(),
+      }
+      setMessages(prev => [...prev, assistantMessage])
+      setIsLoading(false)
     } catch (error) {
+      console.error('Chat error:', error)
       setIsLoading(false)
       const errorMessage: ChatMessage = {
         role: 'assistant',
-        content: 'Sorry, I encountered an error. Please try again later.',
+        content: 'Sorry, I encountered an error connecting to the AI service. Please try again later.',
         timestamp: new Date(),
       }
       setMessages(prev => [...prev, errorMessage])

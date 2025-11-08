@@ -85,17 +85,36 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
           })),
         })
 
-        // Generate simple recommendations based on liked content
-        if (data.ratings && data.ratings.liked && data.ratings.liked.length > 0) {
-          const likedItems = data.ratings.liked.slice(0, 3)
-          const newRecommendations = likedItems.map((item: any) => ({
-            title: `More like ${item.title}`,
-            reason: `You rated this ${item.user_rating}/10`,
-          }))
+        // Fetch AI recommendations
+        try {
+          const recsResponse = await fetch(
+            `${process.env.NEXT_PUBLIC_API_URL}/api/ai/recommendations`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+              },
+              body: JSON.stringify({
+                user_id: user.id,
+                limit: 5,
+              }),
+            }
+          )
           
-          if (newRecommendations.length > 0) {
-            setRecommendations(newRecommendations)
+          if (recsResponse.ok) {
+            const recsData = await recsResponse.json()
+            if (recsData.recommendations && recsData.recommendations.length > 0) {
+              setRecommendations(recsData.recommendations.map((rec: any) => ({
+                title: rec.title,
+                reason: rec.reason,
+              })))
+            }
+          } else {
+            console.error('Failed to fetch AI recommendations:', recsResponse.statusText)
           }
+        } catch (error) {
+          console.error('Error fetching AI recommendations:', error)
         }
 
         setFetchingData(false)
