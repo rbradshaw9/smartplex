@@ -17,26 +17,9 @@ export default async function DashboardPage() {
     redirect('/')
   }
 
-  // Fetch user's Plex token from localStorage (client-side)
-  // Note: This should be fetched from the database in production
-  // For now, we'll pass mock data and let the client fetch real data
-  
-  // Fetch user profile to get Plex token
-  let plexToken = null
-  try {
-    const { data: userData } = await supabase
-      .table('users')
-      .select('*')
-      .eq('id', session.user.id)
-      .single()
-    
-    // Note: plex_token is stored in localStorage on client, not in DB
-    // We'll need to fetch it client-side
-  } catch (error) {
-    console.error('Failed to fetch user data:', error)
-  }
-
-  // Use mock data for now - the dashboard component will fetch real data client-side
+  // Plex token is stored in localStorage on the client
+  // The dashboard component will fetch real data using useEffect
+  // Server component just passes initial empty/loading state
   const mockUserStats = {
     totalWatched: 0,
     hoursWatched: 0,
