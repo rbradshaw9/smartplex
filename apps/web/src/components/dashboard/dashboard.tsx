@@ -64,24 +64,37 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
 
         const data = await response.json()
 
+        console.log('Plex API response:', data)
+
         // Calculate favorite genre from watch history
         const genreCounts: Record<string, number> = {}
-        data.watch_history.forEach((item: any) => {
-          item.genres?.forEach((genre: string) => {
-            genreCounts[genre] = (genreCounts[genre] || 0) + 1
+        if (data.watch_history && Array.isArray(data.watch_history)) {
+          data.watch_history.forEach((item: any) => {
+            if (item.genres && Array.isArray(item.genres)) {
+              item.genres.forEach((genre: string) => {
+                if (genre) {
+                  genreCounts[genre] = (genreCounts[genre] || 0) + 1
+                }
+              })
+            }
           })
-        })
-        const favoriteGenre = Object.entries(genreCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Unknown'
+        }
+        
+        const sortedGenres = Object.entries(genreCounts).sort((a, b) => b[1] - a[1])
+        const favoriteGenre = sortedGenres.length > 0 ? sortedGenres[0][0] : 'No genre data yet'
+
+        console.log('Genre counts:', genreCounts)
+        console.log('Favorite genre:', favoriteGenre)
 
         // Update stats
         setUserStats({
-          totalWatched: data.stats.total_watched,
-          hoursWatched: data.stats.total_hours,
+          totalWatched: data.stats?.total_watched || 0,
+          hoursWatched: data.stats?.total_hours || 0,
           favoriteGenre,
-          recentlyWatched: data.watch_history.slice(0, 10).map((item: any) => ({
-            title: item.title,
-            type: item.type,
-            watchedAt: item.last_viewed_at,
+          recentlyWatched: (data.watch_history || []).slice(0, 10).map((item: any) => ({
+            title: item.title || 'Unknown',
+            type: item.type || 'unknown',
+            watchedAt: item.last_viewed_at || new Date().toISOString(),
           })),
         })
 
