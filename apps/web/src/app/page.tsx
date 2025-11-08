@@ -5,8 +5,9 @@ import { LoginForm } from '@/components/auth/login-form'
 import { Database } from '@smartplex/db/types'
 
 export default async function Home() {
+  const cookieStore = await cookies()
   const supabase = createServerComponentClient<Database>({
-    cookies,
+    cookies: () => cookieStore,
   })
 
   const {

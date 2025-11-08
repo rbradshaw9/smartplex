@@ -5,8 +5,9 @@ import { Dashboard } from '@/components/dashboard/dashboard'
 import { Database } from '@smartplex/db/types'
 
 export default async function DashboardPage() {
+  const cookieStore = await cookies()
   const supabase = createServerComponentClient<Database>({
-    cookies,
+    cookies: () => cookieStore,
   })
 
   const {
