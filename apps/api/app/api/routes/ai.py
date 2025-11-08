@@ -205,9 +205,9 @@ async def analyze_viewing_patterns(
 
 @router.get("/recommendations")
 async def get_recommendations(
-    limit: int = Field(default=10, ge=1, le=100, description="Max 100 recommendations"),
-    genre: Optional[str] = Field(default=None, max_length=50),
-    content_type: Optional[str] = Field(default=None, pattern="^(movie|series)$"),  # movie, series, or None for both
+    limit: int = 10,
+    genre: Optional[str] = None,
+    content_type: Optional[str] = None,  # movie, series, or None for both
     current_user: Optional[Dict[str, Any]] = Depends(get_optional_user),
     supabase: Client = Depends(get_supabase_client)
 ) -> List[Dict[str, Any]]:

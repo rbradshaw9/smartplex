@@ -131,7 +131,7 @@ async def sync_plex_library(
 
 @router.get("/history")
 async def get_sync_history(
-    limit: int = Field(default=10, ge=1, le=100, description="Max 100 records"),
+    limit: int = 10,
     current_user: Dict[str, Any] = Depends(get_current_user),
     supabase: Client = Depends(get_supabase_client)
 ) -> List[Dict[str, Any]]:
