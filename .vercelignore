@@ -1,0 +1,19 @@
+# Ignore Python API - should be deployed separately
+apps/api/
+
+# Ignore Python files
+*.py
+*.pyc
+__pycache__/
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Ignore Poetry files
+poetry.lock
+pyproject.toml
+
+# Keep Next.js web app
+!apps/web/
