@@ -1,26 +1,21 @@
-# Ignore frontend and agent apps - deploy only the API
-apps/web/
-apps/agent/
-packages/
+# Railway should only deploy the API, not the full monorepo
+# This forces Railway to focus on the /apps/api directory
 
-# Ignore development files
+# Ignore everything except the API
+/*
+!/apps/
+apps/*
+!/apps/api/
+
+# Keep necessary root files for workspace detection
+!package.json
+!pnpm-workspace.yaml
+
+# Ignore development and docs
 *.md
 .git/
 .github/
 .vscode/
 .idea/
-
-# Ignore environment files
 .env*
 !.env.example
-
-# Ignore build outputs
-dist/
-build/
-.next/
-node_modules/
-
-# Ignore documentation
-docs/
-README.md
-keys.md
