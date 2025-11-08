@@ -4,7 +4,6 @@ Loads environment variables and provides typed configuration objects.
 """
 
 import os
-from functools import lru_cache
 from typing import Optional
 
 from pydantic import Field
@@ -48,7 +47,13 @@ class Settings(BaseSettings):
         case_sensitive = False
 
 
-@lru_cache()
+# Create a singleton instance
+_settings: Optional[Settings] = None
+
+
 def get_settings() -> Settings:
-    """Get cached application settings."""
-    return Settings()
+    """Get cached application settings (singleton pattern)."""
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings
