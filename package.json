@@ -1,0 +1,51 @@
+{
+  "name": "smartplex",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Autonomous, AI-Powered Plex Server Ecosystem",
+  "author": "Ryan Bradshaw",
+  "license": "MIT",
+  "packageManager": "pnpm@8.15.0",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "scripts": {
+    "dev": "concurrently \"pnpm dev:web\" \"pnpm dev:api\"",
+    "dev:web": "pnpm --filter @smartplex/web dev",
+    "dev:api": "pnpm --filter @smartplex/api dev",
+    "dev:agent": "pnpm --filter @smartplex/agent dev",
+    "build": "pnpm --filter @smartplex/web build && pnpm --filter @smartplex/api build",
+    "build:web": "pnpm --filter @smartplex/web build",
+    "build:api": "pnpm --filter @smartplex/api build",
+    "build:agent": "pnpm --filter @smartplex/agent build",
+    "test": "pnpm --recursive test",
+    "test:web": "pnpm --filter @smartplex/web test",
+    "test:api": "pnpm --filter @smartplex/api test",
+    "lint": "pnpm --recursive lint",
+    "lint:fix": "pnpm --recursive lint:fix",
+    "type-check": "pnpm --recursive type-check",
+    "clean": "pnpm --recursive clean",
+    "setup": "pnpm install && pnpm supabase:types && echo '✅ SmartPlex setup complete!'",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:reset": "supabase db reset",
+    "supabase:types": "supabase gen types typescript --local > packages/db/types.ts",
+    "docker:dev": "docker-compose -f infra/docker-compose.dev.yml up -d",
+    "docker:down": "docker-compose -f infra/docker-compose.dev.yml down",
+    "docker:logs": "docker-compose -f infra/docker-compose.dev.yml logs -f"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "concurrently": "^8.2.2",
+    "prettier": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "supabase": "^1.142.2"
+  }
+}

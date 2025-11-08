@@ -1,0 +1,134 @@
+# SmartPlex Development Environment
+# This docker-compose file sets up the complete SmartPlex stack for local development
+
+version: '3.8'
+
+services:
+  # Supabase (local development)
+  # Note: Use `supabase start` instead for full local Supabase setup
+  # This is a simplified Redis + Postgres setup for demo
+  
+  redis:
+    image: redis:7-alpine
+    container_name: smartplex-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # SmartPlex API Backend
+  api:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+    container_name: smartplex-api
+    ports:
+      - "8000:8000"
+    environment:
+      - SMARTPLEX_ENV=development
+      - DEBUG=true
+      - REDIS_URL=redis://redis:6379
+      # Note: Add your Supabase credentials to .env file
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    volumes:
+      - ../apps/api:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # SmartPlex Agent (local Plex server automation)
+  agent:
+    build:
+      context: ../apps/agent
+      dockerfile: Dockerfile
+    container_name: smartplex-agent
+    ports:
+      - "9000:9000"
+    environment:
+      - SMARTPLEX_ENV=development
+      - DEBUG=true
+      - PLEX_URL=${PLEX_URL:-http://host.docker.internal:32400}
+      - PLEX_TOKEN=${PLEX_TOKEN}
+      - PLEX_LIBRARY_PATHS=/data/media
+      - SMARTPLEX_API_URL=http://api:8000
+      - AGENT_ID=agent-docker-dev
+      - CLEANUP_ENABLED=false
+      - CLEANUP_DRY_RUN=true
+      - STORAGE_THRESHOLD_WARNING=85
+      - STORAGE_THRESHOLD_CRITICAL=95
+    volumes:
+      - ../apps/agent:/app
+      # Mount Plex library paths (adjust these to your actual Plex library locations)
+      - ${PLEX_LIBRARY_PATH:-./data/media}:/data/media:ro
+      - agent_logs:/data/logs
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health/"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+    # Allow agent to access host network for Plex server communication
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Development tools and monitoring
+  
+  # Redis Commander (Redis GUI)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: smartplex-redis-gui
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=redis:redis:6379
+    depends_on:
+      - redis
+    restart: unless-stopped
+    profiles: ["tools"]
+
+  # Portainer (Docker management)
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: smartplex-portainer
+    ports:
+      - "9443:9443"
+      - "8082:8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    restart: unless-stopped
+    profiles: ["tools"]
+    command: -H unix:///var/run/docker.sock
+
+volumes:
+  redis_data:
+    name: smartplex_redis_data
+  agent_logs:
+    name: smartplex_agent_logs
+  portainer_data:
+    name: smartplex_portainer_data
+
+networks:
+  default:
+    name: smartplex_network
+    driver: bridge

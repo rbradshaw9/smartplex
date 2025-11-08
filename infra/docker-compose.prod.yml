@@ -1,0 +1,209 @@
+# SmartPlex Production Docker Compose
+# This is a production-ready setup with SSL, monitoring, and security hardening
+
+version: '3.8'
+
+services:
+  # Nginx reverse proxy with SSL
+  nginx:
+    image: nginx:alpine
+    container_name: smartplex-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - api
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis with persistence and security
+  redis:
+    image: redis:7-alpine
+    container_name: smartplex-redis-prod
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./redis/redis.conf:/etc/redis/redis.conf:ro
+    command: redis-server /etc/redis/redis.conf
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    sysctls:
+      - net.core.somaxconn=1024
+
+  # SmartPlex API Backend (Production)
+  api:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+    container_name: smartplex-api-prod
+    expose:
+      - "8000"
+    environment:
+      - SMARTPLEX_ENV=production
+      - DEBUG=false
+      - REDIS_URL=redis://redis:6379
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+    volumes:
+      - api_logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/logs
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+
+  # SmartPlex Agent (Production)
+  agent:
+    build:
+      context: ../apps/agent
+      dockerfile: Dockerfile
+    container_name: smartplex-agent-prod
+    expose:
+      - "9000"
+    environment:
+      - SMARTPLEX_ENV=production
+      - DEBUG=false
+      - PLEX_URL=${PLEX_URL}
+      - PLEX_TOKEN=${PLEX_TOKEN}
+      - PLEX_LIBRARY_PATHS=${PLEX_LIBRARY_PATHS}
+      - SMARTPLEX_API_URL=http://api:8000
+      - SMARTPLEX_API_TOKEN=${SMARTPLEX_API_TOKEN}
+      - AGENT_ID=${AGENT_ID:-agent-prod}
+      - CLEANUP_ENABLED=${CLEANUP_ENABLED:-false}
+      - CLEANUP_DRY_RUN=${CLEANUP_DRY_RUN:-true}
+      - STORAGE_THRESHOLD_WARNING=${STORAGE_THRESHOLD_WARNING:-85}
+      - STORAGE_THRESHOLD_CRITICAL=${STORAGE_THRESHOLD_CRITICAL:-95}
+    volumes:
+      - ${PLEX_LIBRARY_PATHS}:${PLEX_LIBRARY_PATHS}:ro
+      - agent_logs:/app/logs
+      - agent_config:/app/config
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health/"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.25'
+        reservations:
+          memory: 256M
+          cpus: '0.1'
+
+  # Monitoring and logging
+  
+  # Prometheus metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: smartplex-prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    profiles: ["monitoring"]
+
+  # Grafana dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: smartplex-grafana
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    profiles: ["monitoring"]
+
+  # Log aggregation
+  loki:
+    image: grafana/loki:latest
+    container_name: smartplex-loki
+    ports:
+      - "127.0.0.1:3100:3100"
+    volumes:
+      - ./monitoring/loki.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+    profiles: ["monitoring"]
+
+volumes:
+  redis_data:
+    name: smartplex_redis_prod
+  api_logs:
+    name: smartplex_api_logs
+  agent_logs:
+    name: smartplex_agent_logs
+  agent_config:
+    name: smartplex_agent_config
+  nginx_logs:
+    name: smartplex_nginx_logs
+  prometheus_data:
+    name: smartplex_prometheus
+  grafana_data:
+    name: smartplex_grafana
+  loki_data:
+    name: smartplex_loki
+
+networks:
+  default:
+    name: smartplex_prod_network
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

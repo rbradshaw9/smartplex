@@ -1,0 +1,17 @@
+{
+  "name": "@smartplex/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+    "start": "uvicorn app.main:app --host 0.0.0.0 --port 8000",
+    "build": "echo 'FastAPI build complete'",
+    "test": "pytest",
+    "lint": "flake8 app/",
+    "lint:fix": "black app/ && isort app/",
+    "type-check": "mypy app/",
+    "clean": "find . -name '*.pyc' -delete && find . -name '__pycache__' -delete"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
