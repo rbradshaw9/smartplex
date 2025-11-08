@@ -1,6 +1,6 @@
 {
-  "installCommand": "corepack enable && corepack prepare pnpm@8.15.1 --activate && pnpm install",
-  "buildCommand": "cd apps/web && pnpm build",
-  "devCommand": "cd apps/web && pnpm dev",
+  "installCommand": "corepack enable && corepack prepare pnpm@8.15.1 --activate && corepack pnpm install",
+  "buildCommand": "cd apps/web && corepack pnpm build",
+  "devCommand": "cd apps/web && corepack pnpm dev",
   "outputDirectory": "apps/web/.next"
 }
