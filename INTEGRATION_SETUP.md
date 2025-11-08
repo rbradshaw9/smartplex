@@ -51,8 +51,8 @@ Create a file with your integration details (keep this secure!):
 ```json
 {
   "sonarr": {
-    "url": "http://192.168.1.100:8989",
-    "api_key": "your-sonarr-api-key-here",
+    "url": "https://goneexploring.myles.usbx.me/sonarr/",
+    "api_key": "6f4be1e9167b46e6b282c5dcc99e3d50",
     "enabled": true
   },
   "radarr": {
