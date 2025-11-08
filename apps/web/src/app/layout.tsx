@@ -9,9 +9,13 @@ export const metadata: Metadata = {
   description: 'The autonomous, AI-powered Plex server ecosystem that intelligently manages your media.',
   keywords: ['Plex', 'AI', 'Media Server', 'Automation', 'SmartPlex'],
   other: {
-    'build-version': '2.1.0', // Cache buster
+    'build-version': '3.0.0-' + Date.now(), // Force cache bust
   },
 }
+
+// Force dynamic rendering - no static optimization
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 export default function RootLayout({
   children,
