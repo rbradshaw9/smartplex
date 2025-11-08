@@ -1,7 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    appDir: true,
+  // Force fresh build
+  generateBuildId: async () => {
+    return 'build-' + Date.now()
   },
   images: {
     domains: [
