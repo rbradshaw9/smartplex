@@ -1,9 +1,3 @@
 {
-  "$schema": "https://railway.app/railway.schema.json",
-  "build": {
-    "buildCommand": "poetry install --no-dev"
-  },
-  "deploy": {
-    "startCommand": "python run.py"
-  }
+  "$schema": "https://railway.app/railway.schema.json"
 }
