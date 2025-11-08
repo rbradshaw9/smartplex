@@ -1,17 +1,6 @@
 {
-  "version": 2,
   "installCommand": "corepack enable && corepack prepare pnpm@8.15.1 --activate && pnpm install",
-  "buildCommand": "pnpm --filter @smartplex/web build",
-  "builds": [
-    {
-      "src": "apps/web/package.json",
-      "use": "@vercel/next"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "apps/web/$1"
-    }
-  ]
+  "buildCommand": "cd apps/web && pnpm build",
+  "devCommand": "cd apps/web && pnpm dev",
+  "outputDirectory": "apps/web/.next"
 }
