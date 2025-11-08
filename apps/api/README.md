@@ -21,3 +21,4 @@ poetry run uvicorn app.main:app --reload
 - `SUPABASE_URL`: Your Supabase project URL
 - `SUPABASE_SERVICE_KEY`: Your Supabase service role key
 - `SMARTPLEX_ENV`: Environment (development/production)
+# Railway deployment trigger
