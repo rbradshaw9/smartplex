@@ -1,11 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Force fresh build - cache buster
+  // Force fresh build - cache buster v3
   generateBuildId: async () => {
-    return 'build-' + Date.now() + '-v2'
+    return 'build-' + Date.now() + '-v3-' + Math.random().toString(36).substring(7)
   },
-  // Output standalone for better caching control
-  output: 'standalone',
+  // Disable static optimization to force rebuild
+  // output: 'standalone',
   images: {
     domains: [
       'localhost',
