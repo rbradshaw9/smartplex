@@ -141,6 +141,15 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {fetchingData && (
+          <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 mb-8">
+            <div className="flex items-center space-x-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-400"></div>
+              <p className="text-blue-400">Fetching your Plex watch history and ratings...</p>
+            </div>
+          </div>
+        )}
+        
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Left Column - Stats & Recommendations */}
           <div className="lg:col-span-2 space-y-8">
