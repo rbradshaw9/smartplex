@@ -33,4 +33,4 @@ const nextConfig = {
   },
 }
 
-module.exports = nextConfig
+module.exports = nextConfig// Build version 1762639217
