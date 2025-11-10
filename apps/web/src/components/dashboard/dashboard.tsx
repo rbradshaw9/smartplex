@@ -220,25 +220,32 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
         // Fetch AI recommendations (skip in background to avoid 502 errors)
         if (!isBackground) {
           try {
+            console.log('📊 Fetching AI recommendations...')
+            const session = await supabase.auth.getSession()
+            console.log('Session token available:', !!session.data.session?.access_token)
+            
             const recsResponse = await fetch(
               `${apiUrl}/ai/recommendations?limit=5`,
               {
                 method: 'GET',
                 headers: {
-                  'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+                  'Authorization': `Bearer ${session.data.session?.access_token}`,
                 },
               }
             )
             
+            console.log('Recommendations status:', recsResponse.status)
+            
             if (recsResponse.ok) {
               const recsData = await recsResponse.json()
-              console.log('Recommendations response:', recsData)
+              console.log('✅ Recommendations response:', recsData)
               // Backend returns array directly, not wrapped in object
               if (Array.isArray(recsData) && recsData.length > 0) {
                 const recs = recsData.map((rec: any) => ({
                   title: rec.title,
                   reason: rec.reason || 'AI recommended',
                 }))
+                console.log('Setting recommendations:', recs)
                 setRecommendations(recs)
 
                 // Cache recommendations
@@ -249,12 +256,15 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
                     recommendations: recs,
                     last_updated_at: new Date().toISOString(),
                   }, { onConflict: 'user_id' })
+              } else {
+                console.log('⚠️ No recommendations in response or not an array')
               }
             } else {
-              console.error('Recommendations fetch failed:', recsResponse.status, await recsResponse.text())
+              const errorText = await recsResponse.text()
+              console.error('❌ Recommendations fetch failed:', recsResponse.status, errorText)
             }
           } catch (error) {
-            console.error('Error fetching AI recommendations:', error)
+            console.error('❌ Error fetching AI recommendations:', error)
           }
         }
 

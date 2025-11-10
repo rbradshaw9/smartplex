@@ -33,6 +33,7 @@ export function ChatPanel() {
     setIsLoading(true)
 
     try {
+      console.log('💬 Starting chat request...')
       // Get auth token from Supabase
       const { createClientComponentClient } = await import('@supabase/auth-helpers-nextjs')
       const supabase = createClientComponentClient()
@@ -42,8 +43,12 @@ export function ChatPanel() {
         throw new Error('Not authenticated')
       }
 
+      console.log('Session valid, calling AI chat API...')
+      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/ai/chat`
+      console.log('API URL:', apiUrl)
+
       // Call the real AI chat API
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/ai/chat`, {
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -58,11 +63,16 @@ export function ChatPanel() {
         }),
       })
 
+      console.log('Chat response status:', response.status)
+
       if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Chat error response:', errorText)
         throw new Error(`API error: ${response.status}`)
       }
 
       const data = await response.json()
+      console.log('✅ Chat response data:', data)
       
       const assistantMessage: ChatMessage = {
         role: 'assistant',
@@ -72,7 +82,7 @@ export function ChatPanel() {
       setMessages(prev => [...prev, assistantMessage])
       setIsLoading(false)
     } catch (error) {
-      console.error('Chat error:', error)
+      console.error('❌ Chat error:', error)
       setIsLoading(false)
       const errorMessage: ChatMessage = {
         role: 'assistant',
