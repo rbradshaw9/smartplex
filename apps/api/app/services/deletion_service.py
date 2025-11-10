@@ -261,7 +261,9 @@ class DeletionService:
                 # Valid statuses: 'pending', 'completed', 'failed', 'skipped'
                 item_result['status'] = 'completed' if not dry_run else 'skipped'
                 results['deleted'] += 1
-                results['total_size_mb'] += candidate.get('file_size_mb', 0) or 0
+                # Ensure we're adding integers to total_size_mb
+                size_mb = candidate.get('file_size_mb', 0) or 0
+                results['total_size_mb'] += round(float(size_mb)) if size_mb else 0
                 
             except Exception as e:
                 logger.error(f"Failed to delete {candidate['title']}: {e}")
@@ -270,6 +272,11 @@ class DeletionService:
                 results['failed'] += 1
             
             # Log to deletion_history
+            # Ensure file_size_mb is integer or None (not float) for bigint column
+            file_size_mb = candidate.get('file_size_mb')
+            if file_size_mb is not None:
+                file_size_mb = round(float(file_size_mb))
+            
             history_entry = {
                 "rule_id": str(rule_id),
                 "media_item_id": candidate['id'],
@@ -282,7 +289,7 @@ class DeletionService:
                 "days_since_added": candidate['days_since_added'],
                 "days_since_viewed": candidate['days_since_viewed'],
                 "rating": candidate.get('rating'),
-                "file_size_mb": candidate.get('file_size_mb'),
+                "file_size_mb": file_size_mb,
                 "deleted_from_plex": item_result['deleted_from_plex'],
                 "deleted_from_sonarr": item_result['deleted_from_sonarr'],
                 "deleted_from_radarr": item_result['deleted_from_radarr'],
