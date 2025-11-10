@@ -248,25 +248,37 @@ class DeletionService:
             
             try:
                 if not dry_run:
-                    # TODO: Implement actual deletion via Plex/Sonarr/Radarr APIs
-                    # For now, just log what we would do
+                    logger.warning(f"DELETING: {candidate['title']}")
                     
-                    # Delete from Plex (via Tautulli or direct Plex API)
-                    # if candidate['type'] in ['movie', 'show']:
-                    #     await self._delete_from_plex(candidate['plex_id'])
-                    #     item_result['deleted_from_plex'] = True
+                    # Delete from Plex (always try this first)
+                    if candidate['type'] in ['movie', 'show']:
+                        try:
+                            plex_deleted = await self._delete_from_plex(candidate['plex_id'], candidate['id'])
+                            item_result['deleted_from_plex'] = plex_deleted
+                            if plex_deleted:
+                                logger.info(f"✅ Deleted from Plex: {candidate['title']}")
+                        except Exception as e:
+                            logger.error(f"Failed to delete from Plex: {e}")
                     
                     # Delete from Sonarr (if TV show)
-                    # if candidate['type'] in ['show', 'season', 'episode']:
-                    #     await self._delete_from_sonarr(candidate['id'])
-                    #     item_result['deleted_from_sonarr'] = True
+                    if candidate['type'] in ['show', 'season', 'episode']:
+                        try:
+                            sonarr_deleted = await self._delete_from_sonarr(candidate['id'])
+                            item_result['deleted_from_sonarr'] = sonarr_deleted
+                            if sonarr_deleted:
+                                logger.info(f"✅ Deleted from Sonarr: {candidate['title']}")
+                        except Exception as e:
+                            logger.error(f"Failed to delete from Sonarr: {e}")
                     
                     # Delete from Radarr (if movie)
-                    # if candidate['type'] == 'movie':
-                    #     await self._delete_from_radarr(candidate['id'])
-                    #     item_result['deleted_from_radarr'] = True
-                    
-                    pass
+                    if candidate['type'] == 'movie':
+                        try:
+                            radarr_deleted = await self._delete_from_radarr(candidate['id'])
+                            item_result['deleted_from_radarr'] = radarr_deleted
+                            if radarr_deleted:
+                                logger.info(f"✅ Deleted from Radarr: {candidate['title']}")
+                        except Exception as e:
+                            logger.error(f"Failed to delete from Radarr: {e}")
                 
                 # Set status based on whether this was a dry run or actual deletion
                 # Valid statuses: 'pending', 'completed', 'failed', 'skipped'

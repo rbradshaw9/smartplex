@@ -15,6 +15,7 @@ from supabase import Client
 from app.core.supabase import get_supabase_client, require_admin
 from app.core.logging import get_logger
 from app.services.deletion_service import DeletionService
+from app.services.cascade_deletion_service import CascadeDeletionService
 
 router = APIRouter()
 logger = get_logger("admin.deletion")
@@ -326,15 +327,20 @@ async def execute_deletion(
     supabase: Client = Depends(get_supabase_client)
 ):
     """
-    Execute deletion of media items.
+    Execute deletion of media items with CASCADE across all systems.
     
     If dry_run=True, this simulates the deletion without actually removing files.
-    If dry_run=False, this will permanently delete files from Plex/Sonarr/Radarr.
+    If dry_run=False, this will PERMANENTLY delete files from:
+    - Plex library (actual file deletion)
+    - Sonarr (prevents TV show re-download)
+    - Radarr (prevents movie re-download)
+    - Overseerr (clears request, allows re-request if needed)
     
     Requires admin role.
     """
     try:
         deletion_service = DeletionService(supabase)
+        cascade_service = CascadeDeletionService(supabase)
         
         # First scan for candidates
         candidates = await deletion_service.scan_for_candidates(
@@ -359,13 +365,46 @@ async def execute_deletion(
                 }
             }
         
-        # Execute deletion
-        results = await deletion_service.execute_deletion(
-            rule_id=UUID(request.rule_id),
-            candidates=candidates,
-            user_id=UUID(admin_user["id"]),
-            dry_run=request.dry_run
-        )
+        # Execute CASCADE deletion on each candidate
+        deletion_results = []
+        deleted_count = 0
+        failed_count = 0
+        total_size_mb = 0.0
+        
+        for candidate in candidates:
+            # Get full media item data from database
+            media_result = supabase.table("media_items")\
+                .select("*")\
+                .eq("id", candidate['id'])\
+                .single()\
+                .execute()
+            
+            if not media_result.data:
+                logger.warning(f"Media item {candidate['id']} not found in database")
+                failed_count += 1
+                continue
+            
+            media_item = media_result.data
+            
+            # Execute cascade deletion
+            result = await cascade_service.delete_media_item(
+                media_item=media_item,
+                user_id=admin_user["id"],
+                deletion_rule_id=str(request.rule_id),
+                deletion_reason=f"rule_{request.rule_id}",
+                dry_run=request.dry_run
+            )
+            
+            deletion_results.append(result)
+            
+            if result["overall_status"] == "completed":
+                deleted_count += 1
+                total_size_mb += media_item.get('file_size_mb', 0) or 0
+            elif result["overall_status"] == "partial":
+                deleted_count += 1  # Count partial as success since Plex deletion worked
+                total_size_mb += media_item.get('file_size_mb', 0) or 0
+            else:
+                failed_count += 1
         
         # Log audit trail
         try:
@@ -375,29 +414,31 @@ async def execute_deletion(
                 "resource_type": "deletion_rule",
                 "resource_id": request.rule_id,
                 "changes": {
-                    "total_candidates": results.get("total_candidates", 0),
-                    "deleted": results.get("deleted", 0),
-                    "failed": results.get("failed", 0),
-                    "dry_run": request.dry_run
+                    "total_candidates": len(candidates),
+                    "deleted": deleted_count,
+                    "failed": failed_count,
+                    "dry_run": request.dry_run,
+                    "cascade_results": deletion_results
                 }
             }).execute()
         except Exception as audit_error:
             logger.error(f"Failed to log audit trail (non-fatal): {audit_error}")
         
-        action = "DRY RUN" if request.dry_run else "EXECUTED"
-        logger.warning(f"{action} deletion using rule {request.rule_id}: deleted={results.get('deleted')}, failed={results.get('failed')}")
+        action = "DRY RUN" if request.dry_run else "EXECUTED CASCADE DELETION"
+        logger.warning(f"{action} using rule {request.rule_id}: deleted={deleted_count}, failed={failed_count}")
         
-        # Return simplified results to avoid serialization issues
+        # Return simplified results
         return {
             "rule_id": request.rule_id,
             "dry_run": request.dry_run,
             "results": {
-                "total_candidates": results.get("total_candidates", 0),
-                "deleted": results.get("deleted", 0),
-                "failed": results.get("failed", 0),
-                "skipped": results.get("skipped", 0),
-                "total_size_mb": round(float(results.get("total_size_mb", 0)))
-            }
+                "total_candidates": len(candidates),
+                "deleted": deleted_count,
+                "failed": failed_count,
+                "skipped": 0,
+                "total_size_mb": round(total_size_mb, 2)
+            },
+            "cascade_details": deletion_results  # Include full cascade results for debugging
         }
     except ValueError as e:
         logger.error(f"ValueError in execute_deletion: {e}")
