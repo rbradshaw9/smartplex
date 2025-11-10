@@ -76,23 +76,182 @@ async def trigger_plex_library_sync_background(
     server_id: str,
     library_section: Optional[str] = None
 ):
-    """Background task to sync Plex library for a specific user/server."""
+    """
+    Background task to sync Plex library for a specific user/server.
+    
+    Triggered by Plex webhooks when library content changes.
+    Updates media_items table with latest library content.
+    """
     try:
         logger.info(f"Background Plex library sync triggered for user {user_id}, server {server_id} (section: {library_section or 'all'})")
         
-        # TODO: Implement full Plex library sync
-        # This will:
-        # 1. Get server connection details from database
-        # 2. Connect to Plex server using preferred_connection_url or try all URLs
-        # 3. Fetch library items (or specific section)
-        # 4. Update media_items table with metadata
-        # 5. Match external IDs (tmdb_id, tvdb_id, imdb_id)
-        # 6. Associate items with this server_id and user_id
+        from plexapi.server import PlexServer
+        from plexapi.myplex import MyPlexAccount
+        from app.core.plex_connection import PlexConnectionManager
         
-        logger.info(f"Background Plex sync completed for user {user_id}")
+        # 1. Get server and user details from database
+        server_result = supabase.table('servers')\
+            .select('*')\
+            .eq('id', server_id)\
+            .eq('user_id', user_id)\
+            .maybe_single()\
+            .execute()
+        
+        if not server_result.data:
+            logger.error(f"Server {server_id} not found for user {user_id}")
+            return
+        
+        server_data = server_result.data
+        
+        # Get user's Plex token
+        user_result = supabase.table('users')\
+            .select('plex_token')\
+            .eq('id', user_id)\
+            .single()\
+            .execute()
+        
+        if not user_result.data or not user_result.data.get('plex_token'):
+            logger.error(f"No Plex token found for user {user_id}")
+            return
+        
+        plex_token = user_result.data['plex_token']
+        
+        # 2. Connect to Plex server using cached connection
+        server = None
+        if server_data.get('preferred_connection_url'):
+            # Try cached URL first
+            try:
+                logger.info(f"Trying cached URL: {server_data['preferred_connection_url']}")
+                server = PlexServer(
+                    baseurl=server_data['preferred_connection_url'],
+                    token=plex_token,
+                    timeout=5
+                )
+                _ = server.machineIdentifier  # Test connection
+            except Exception as e:
+                logger.warning(f"Cached connection failed: {e}, trying MyPlex")
+                server = None
+        
+        # Fallback to MyPlex connection discovery
+        if not server:
+            account = MyPlexAccount(token=plex_token)
+            conn_manager = PlexConnectionManager(supabase)
+            
+            # Find the resource matching our machine_id
+            for resource in account.resources():
+                if resource.clientIdentifier == server_data['machine_id']:
+                    server = await conn_manager.connect_to_server(resource, plex_token, user_id)
+                    break
+        
+        if not server:
+            logger.error(f"Could not connect to Plex server {server_data['name']}")
+            return
+        
+        logger.info(f"Connected to Plex server: {server.friendlyName}")
+        
+        # 3. Fetch library items (specific section or all)
+        sections_to_sync = []
+        if library_section:
+            # Specific section
+            try:
+                section = server.library.section(library_section)
+                sections_to_sync.append(section)
+            except Exception as e:
+                logger.error(f"Library section '{library_section}' not found: {e}")
+                return
+        else:
+            # All movie and TV sections
+            sections_to_sync = [s for s in server.library.sections() if s.type in ('movie', 'show')]
+        
+        items_synced = 0
+        items_updated = 0
+        
+        # 4. Process each section
+        for section in sections_to_sync:
+            logger.info(f"Syncing section: {section.title} ({section.type})")
+            
+            try:
+                # Get all items in section
+                for item in section.all():
+                    try:
+                        # Extract metadata
+                        media_type = 'movie' if section.type == 'movie' else 'show'
+                        
+                        # Get external IDs from guid
+                        tmdb_id = None
+                        tvdb_id = None
+                        imdb_id = None
+                        
+                        for guid in item.guids:
+                            if 'tmdb://' in guid.id:
+                                tmdb_id = int(guid.id.split('tmdb://')[1])
+                            elif 'tvdb://' in guid.id:
+                                tvdb_id = int(guid.id.split('tvdb://')[1])
+                            elif 'imdb://' in guid.id:
+                                imdb_id = guid.id.split('imdb://')[1]
+                        
+                        # Get file size from media parts
+                        file_size_bytes = 0
+                        try:
+                            for media in getattr(item, 'media', []):
+                                for part in getattr(media, 'parts', []):
+                                    file_size_bytes += getattr(part, 'size', 0)
+                        except:
+                            pass
+                        
+                        # Build media item data
+                        media_item = {
+                            'server_id': server_id,
+                            'plex_id': str(item.ratingKey),
+                            'title': item.title,
+                            'type': media_type,
+                            'year': getattr(item, 'year', None),
+                            'duration_ms': getattr(item, 'duration', 0),
+                            'added_at': item.addedAt.isoformat() if hasattr(item, 'addedAt') and item.addedAt else None,
+                            'tmdb_id': tmdb_id,
+                            'tvdb_id': tvdb_id,
+                            'imdb_id': imdb_id,
+                            'file_size_bytes': file_size_bytes if file_size_bytes > 0 else None,
+                            'metadata': {
+                                'summary': getattr(item, 'summary', None),
+                                'rating': getattr(item, 'rating', None),
+                                'content_rating': getattr(item, 'contentRating', None),
+                                'genres': [g.tag for g in getattr(item, 'genres', [])],
+                                'studio': getattr(item, 'studio', None),
+                                'thumb': getattr(item, 'thumb', None),
+                                'library_section': section.title,
+                            }
+                        }
+                        
+                        # Upsert to database
+                        result = supabase.table('media_items').upsert(
+                            media_item,
+                            on_conflict='server_id,plex_id'
+                        ).execute()
+                        
+                        if result.data:
+                            items_synced += 1
+                            if result.data[0].get('updated_at'):
+                                items_updated += 1
+                        
+                        # Log progress every 100 items
+                        if items_synced % 100 == 0:
+                            logger.info(f"Progress: {items_synced} items synced from {section.title}")
+                            
+                    except Exception as item_error:
+                        logger.warning(f"Failed to sync item {item.title}: {item_error}")
+                        continue
+                
+                logger.info(f"Completed section {section.title}: {items_synced} items")
+                
+            except Exception as section_error:
+                logger.error(f"Failed to sync section {section.title}: {section_error}")
+                continue
+        
+        logger.info(f"Background Plex sync completed for user {user_id}: {items_synced} total items ({items_updated} updated)")
         
     except Exception as e:
-        logger.error(f"Background Plex sync failed for user {user_id}: {e}")
+        logger.error(f"Background Plex sync failed for user {user_id}: {e}", exc_info=True)
 
 
 @router.post("/plex")
