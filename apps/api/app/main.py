@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import get_settings
-from app.api.routes import health, sync, ai, plex_auth, plex, integrations
+from app.api.routes import health, sync, ai, plex_auth, plex, integrations, admin_deletion
 from app.core.supabase import get_supabase_client
 from app.core.exceptions import SmartPlexException
 from app.core.logging import setup_logging, get_logger
@@ -118,6 +118,7 @@ app.include_router(ai.router, prefix="/ai", tags=["ai"])
 app.include_router(plex_auth.router, prefix="/api/auth/plex", tags=["authentication"])
 app.include_router(plex.router, prefix="/api", tags=["plex"])
 app.include_router(integrations.router, prefix="/api/integrations", tags=["integrations"])
+app.include_router(admin_deletion.router, prefix="/api/admin/deletion", tags=["admin", "deletion"])
 
 
 @app.get("/")

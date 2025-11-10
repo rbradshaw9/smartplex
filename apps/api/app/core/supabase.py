@@ -56,13 +56,14 @@ async def get_current_user(
 ) -> Dict[str, Any]:
     """
     Get current authenticated user from JWT token.
+    Fetches user role and metadata from the database.
     
     Args:
         credentials: JWT token from Authorization header
         supabase: Supabase client instance
         
     Returns:
-        User data from Supabase auth
+        User data including role from database
         
     Raises:
         AuthenticationException: If token is invalid or user not found
@@ -76,10 +77,33 @@ async def get_current_user(
                 message="Invalid or expired token",
                 details="User not found in token"
             )
+        
+        # Fetch user record from database to get role
+        user_data = supabase.table("users").select("*").eq("id", response.user.id).execute()
+        
+        if not user_data.data or len(user_data.data) == 0:
+            # User authenticated but not in our database yet - create user record
+            logger.warning(f"User {response.user.id} authenticated but not in database, creating record")
+            new_user = {
+                "id": response.user.id,
+                "email": response.user.email,
+                "display_name": response.user.user_metadata.get("full_name") or response.user.user_metadata.get("name"),
+                "avatar_url": response.user.user_metadata.get("avatar_url"),
+                "plex_user_id": response.user.user_metadata.get("plex_user_id"),
+                "plex_username": response.user.user_metadata.get("plex_username"),
+                "role": "user",  # Default role
+            }
+            supabase.table("users").insert(new_user).execute()
+            user_record = new_user
+        else:
+            user_record = user_data.data[0]
             
         return {
             "id": response.user.id,
             "email": response.user.email,
+            "role": user_record.get("role", "user"),
+            "display_name": user_record.get("display_name"),
+            "avatar_url": user_record.get("avatar_url"),
             "user_metadata": response.user.user_metadata,
             "app_metadata": response.user.app_metadata,
         }
@@ -87,6 +111,7 @@ async def get_current_user(
     except Exception as e:
         if isinstance(e, AuthenticationException):
             raise
+        logger.error(f"Authentication error: {e}")
         raise AuthenticationException(
             message="Failed to authenticate user",
             details=str(e)
@@ -108,3 +133,26 @@ async def get_optional_user(
         return await get_current_user(credentials, supabase)
     except AuthenticationException:
         return None
+
+
+async def require_admin(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Dependency that requires the current user to have admin role.
+    
+    Args:
+        current_user: Current authenticated user
+        
+    Returns:
+        User data if admin
+        
+    Raises:
+        HTTPException: 403 if user is not admin
+    """
+    if current_user.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    return current_user
