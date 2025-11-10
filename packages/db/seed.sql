@@ -3,17 +3,24 @@
 
 -- IMPORTANT: Default admin user
 -- Email: rbradshaw@gmail.com
--- Password: MiR43Tx2-
--- This user must be created in Supabase Auth first, then this seed will add the role
+-- If user already exists from Plex login, this will promote them to admin role
 
 -- Sample users (passwords would be handled by Supabase Auth)
+-- Using INSERT ... ON CONFLICT to handle existing users
 INSERT INTO users (id, email, display_name, role, plex_username, preferences) VALUES
   ('00000000-0000-0000-0000-000000000001', 'rbradshaw@gmail.com', 'Ryan Bradshaw', 'admin', 'rbradshaw', '{"theme": "dark", "notifications": {"email": true, "push": true, "storage_alerts": true, "cleanup_reports": true}}'),
   ('550e8400-e29b-41d4-a716-446655440000', 'admin@smartplex.dev', 'SmartPlex Admin', 'admin', 'admin_user', '{"theme": "dark", "notifications": true}'),
   ('550e8400-e29b-41d4-a716-446655440001', 'john@example.com', 'John Doe', 'user', 'john_plex', '{"theme": "light", "autoplay": true}'),
   ('550e8400-e29b-41d4-a716-446655440002', 'jane@example.com', 'Jane Smith', 'user', 'jane_plex', '{"theme": "dark", "language": "en"}'),
   ('550e8400-e29b-41d4-a716-446655440003', 'moderator@smartplex.dev', 'Mod User', 'moderator', 'mod_user', '{"notifications": true}')
-ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role;
+ON CONFLICT (email) DO UPDATE SET 
+  role = EXCLUDED.role,
+  display_name = COALESCE(EXCLUDED.display_name, users.display_name);
+
+-- If rbradshaw@gmail.com already exists with a different ID, promote that user
+UPDATE users 
+SET role = 'admin'
+WHERE email = 'rbradshaw@gmail.com' AND role != 'admin';
 
 -- Sample Plex servers
 INSERT INTO servers (id, user_id, name, url, machine_id, platform, version, status) VALUES
@@ -93,13 +100,30 @@ INSERT INTO system_settings (key, value, description, category, is_secret) VALUE
   ('integrations.timeout_seconds', '30', 'API request timeout', 'integrations', FALSE)
 ON CONFLICT (key) DO NOTHING;
 
--- Insert welcome notification for admin user
-INSERT INTO notifications (user_id, type, title, message, severity, data) VALUES
-  ('00000000-0000-0000-0000-000000000001', 'system', 'Welcome to SmartPlex!', 'Your admin account has been created. Start by connecting your Plex server and configuring integrations in the Admin section.', 'success', '{"action": "setup", "url": "/admin/integrations"}'::jsonb);
+-- Insert welcome notification for admin user (using their actual user_id)
+INSERT INTO notifications (user_id, type, title, message, severity, data)
+SELECT 
+  id,
+  'system',
+  'Admin Access Granted',
+  'You now have admin access to SmartPlex. Visit the Admin section to configure integrations and manage your library.',
+  'success',
+  '{"action": "setup", "url": "/admin/integrations"}'::jsonb
+FROM users 
+WHERE email = 'rbradshaw@gmail.com'
+ON CONFLICT DO NOTHING;
 
--- Insert audit log for seed operation
-INSERT INTO audit_log (user_id, action, resource_type, resource_id, changes) VALUES
-  ('00000000-0000-0000-0000-000000000001', 'seed', 'system', 'database', '{"operation": "initial_seed", "admin_user_created": true}'::jsonb);
+-- Insert audit log for seed operation (using actual user_id)
+INSERT INTO audit_log (user_id, action, resource_type, resource_id, changes)
+SELECT 
+  id,
+  'seed',
+  'system',
+  'database',
+  '{"operation": "initial_seed", "admin_role_granted": true}'::jsonb
+FROM users 
+WHERE email = 'rbradshaw@gmail.com'
+LIMIT 1;
 
 -- Update last_active_at for users to simulate recent activity
 UPDATE users SET last_active_at = NOW() - (random() * INTERVAL '7 days') WHERE role != 'guest';
