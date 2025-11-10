@@ -221,26 +221,23 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
         if (!isBackground) {
           try {
             const recsResponse = await fetch(
-              `${apiUrl}/ai/recommendations`,
+              `${apiUrl}/ai/recommendations?limit=5`,
               {
-                method: 'POST',
+                method: 'GET',
                 headers: {
-                  'Content-Type': 'application/json',
                   'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
                 },
-                body: JSON.stringify({
-                  user_id: user.id,
-                  limit: 5,
-                }),
               }
             )
             
             if (recsResponse.ok) {
               const recsData = await recsResponse.json()
-              if (recsData.recommendations && recsData.recommendations.length > 0) {
-                const recs = recsData.recommendations.map((rec: any) => ({
+              console.log('Recommendations response:', recsData)
+              // Backend returns array directly, not wrapped in object
+              if (Array.isArray(recsData) && recsData.length > 0) {
+                const recs = recsData.map((rec: any) => ({
                   title: rec.title,
-                  reason: rec.reason,
+                  reason: rec.reason || 'AI recommended',
                 }))
                 setRecommendations(recs)
 
@@ -253,6 +250,8 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
                     last_updated_at: new Date().toISOString(),
                   }, { onConflict: 'user_id' })
               }
+            } else {
+              console.error('Recommendations fetch failed:', recsResponse.status, await recsResponse.text())
             }
           } catch (error) {
             console.error('Error fetching AI recommendations:', error)

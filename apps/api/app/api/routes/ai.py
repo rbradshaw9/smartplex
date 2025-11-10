@@ -74,6 +74,17 @@ async def chat_with_ai(
         AI response with recommendations and insights
     """
     try:
+        # Check if AI is configured
+        if not settings.openai_api_key:
+            # Fallback response when AI isn't configured
+            return ChatResponse(
+                response="🤖 AI chat is not yet configured. Please add an OPENAI_API_KEY environment variable to enable AI features. In the meantime, you can explore your dashboard, add integrations, and manage your media library!",
+                context_used=False,
+                tokens_used=0,
+                model_used="fallback",
+                timestamp=datetime.utcnow()
+            )
+        
         # Initialize AI service
         ai_service = AIService(settings)
         
@@ -276,38 +287,42 @@ async def get_recommendations(
             genre = request.genre
             content_type = request.content_type
         
-        # Initialize AI service
-        ai_service = AIService(settings)
-        
         # Get recommendations - personalized if user is authenticated
         recommendations = []
         
-        if current_user:
-            # Get user's watch history for personalization
-            user_stats = supabase.table('user_stats')\
-                .select('*, media_items(*)')\
-                .eq('user_id', current_user['id'])\
-                .order('last_played_at', desc=True)\
-                .limit(50)\
-                .execute()
-            
-            viewing_data = []
-            if user_stats.data:
-                for stat in user_stats.data:
-                    if stat.get('media_items'):
-                        media = stat['media_items']
-                        viewing_data.append({
-                            "title": media.get('title'),
-                            "type": media.get('type'),
-                            "year": media.get('year'),
-                            "user_rating": stat.get('rating'),
-                            "play_count": stat.get('play_count', 0)
-                        })
-            
-            # Get AI recommendations based on history
-            recommendations = await ai_service.generate_recommendations(viewing_data, limit=limit)
-        else:
-            # Generic trending recommendations (could be cached)
+        # If AI is configured, use it for personalized recommendations
+        if settings.openai_api_key and current_user:
+            try:
+                ai_service = AIService(settings)
+                # Get user's watch history for personalization
+                user_stats = supabase.table('user_stats')\
+                    .select('*, media_items(*)')\
+                    .eq('user_id', current_user['id'])\
+                    .order('last_played_at', desc=True)\
+                    .limit(50)\
+                    .execute()
+                
+                viewing_data = []
+                if user_stats.data:
+                    for stat in user_stats.data:
+                        if stat.get('media_items'):
+                            media = stat['media_items']
+                            viewing_data.append({
+                                "title": media.get('title'),
+                                "type": media.get('type'),
+                                "year": media.get('year'),
+                                "user_rating": stat.get('rating'),
+                                "play_count": stat.get('play_count', 0)
+                            })
+                
+                # Get AI recommendations based on history
+                recommendations = await ai_service.generate_recommendations(viewing_data, limit=limit)
+            except Exception as e:
+                print(f"AI recommendations failed: {e}, falling back to generic")
+                recommendations = []
+        
+        # Fallback to generic trending recommendations
+        if not recommendations:
             recommendations = [
                 {
                     "title": "Oppenheimer",
@@ -322,6 +337,27 @@ async def get_recommendations(
                     "year": 2023,
                     "reason": "Popular post-apocalyptic series",
                     "confidence": 0.82
+                },
+                {
+                    "title": "Succession",
+                    "type": "series",
+                    "year": 2023,
+                    "reason": "Award-winning family drama",
+                    "confidence": 0.88
+                },
+                {
+                    "title": "The Bear",
+                    "type": "series",
+                    "year": 2023,
+                    "reason": "Critically acclaimed restaurant drama",
+                    "confidence": 0.84
+                },
+                {
+                    "title": "Poor Things",
+                    "type": "movie",
+                    "year": 2023,
+                    "reason": "Unique fantasy comedy-drama",
+                    "confidence": 0.81
                 }
             ][:limit]
         
