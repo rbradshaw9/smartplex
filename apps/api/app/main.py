@@ -21,7 +21,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from app.config import get_settings
-from app.api.routes import health, sync, ai, plex_auth, plex, plex_sync, integrations, admin_deletion, admin_tautulli, webhooks
+from app.api.routes import health, sync, ai, plex_auth, plex, plex_sync, integrations, admin_deletion, admin_tautulli, webhooks, system_config
 from app.core.supabase import get_supabase_client
 from app.core.exceptions import SmartPlexException
 from app.core.logging import setup_logging, get_logger
@@ -138,6 +138,7 @@ app.include_router(plex_sync.router, prefix="/api/plex", tags=["plex", "sync"])
 app.include_router(integrations.router, prefix="/api/integrations", tags=["integrations"])
 app.include_router(admin_deletion.router, prefix="/api/admin/deletion", tags=["admin", "deletion"])
 app.include_router(admin_tautulli.router, prefix="/api/admin", tags=["admin", "tautulli"])
+app.include_router(system_config.router, prefix="/api/admin/system", tags=["admin", "system"])
 app.include_router(webhooks.router, prefix="/api/webhooks", tags=["webhooks"])
 
 

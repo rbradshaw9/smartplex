@@ -106,85 +106,181 @@ async def sync_library_generator(
                         items = section.all()
                         
                         for item in items:
-                            synced_items += 1
-                            
-                            # Extract metadata
-                            item_type = 'movie' if section.type == 'movie' else 'show'
-                            title = getattr(item, 'title', 'Unknown')
-                            
-                            # Extract IDs from guids
-                            tmdb_id = None
-                            tvdb_id = None
-                            imdb_id = None
-                            
-                            for guid in getattr(item, 'guids', []):
-                                guid_id = guid.id
-                                if 'tmdb://' in guid_id:
-                                    tmdb_id = guid_id.split('tmdb://')[1]
-                                elif 'tvdb://' in guid_id:
-                                    tvdb_id = guid_id.split('tvdb://')[1]
-                                elif 'imdb://' in guid_id:
-                                    imdb_id = guid_id.split('imdb://')[1]
-                            
-                            # Calculate file size
-                            file_size_bytes = 0
-                            try:
-                                for media in getattr(item, 'media', []):
-                                    for part in getattr(media, 'parts', []):
-                                        file_size_bytes += getattr(part, 'size', 0)
-                            except:
-                                pass
-                            
-                            file_size_mb = round(file_size_bytes / (1024 * 1024), 2) if file_size_bytes > 0 else None
-                            
-                            # Upsert to database
-                            media_data = {
-                                'server_id': server_id,
-                                'plex_id': str(item.ratingKey),
-                                'title': title,
-                                'type': item_type,
-                                'year': getattr(item, 'year', None),
-                                'rating': getattr(item, 'rating', None),
-                                'duration_ms': getattr(item, 'duration', None),
-                                'date_added': getattr(item, 'addedAt', datetime.now(timezone.utc)).isoformat(),
-                                'summary': getattr(item, 'summary', None),
-                                'poster_url': getattr(item, 'thumb', None),
-                                'tmdb_id': tmdb_id,
-                                'tvdb_id': tvdb_id,
-                                'imdb_id': imdb_id,
-                                'file_size_mb': file_size_mb,
-                                'genres': [g.tag for g in getattr(item, 'genres', [])]
-                            }
-                            
-                            try:
-                                supabase.table('media_items').upsert(
-                                    media_data,
-                                    on_conflict='server_id,plex_id'
-                                ).execute()
-                            except Exception as db_error:
-                                logger.error(f"Failed to upsert {title}: {db_error}")
-                            
-                            # Calculate ETA
-                            elapsed_seconds = (datetime.now(timezone.utc) - start_time).total_seconds()
-                            items_per_second = synced_items / elapsed_seconds if elapsed_seconds > 0 else 0
-                            remaining_items = total_items - synced_items
-                            eta_seconds = int(remaining_items / items_per_second) if items_per_second > 0 else 0
-                            
-                            # Send progress update every item (could throttle to every N items if needed)
-                            progress_data = {
-                                "status": "syncing",
-                                "current": synced_items,
-                                "total": total_items,
-                                "title": title,
-                                "section": section_name,
-                                "eta_seconds": eta_seconds,
-                                "items_per_second": round(items_per_second, 1)
-                            }
-                            
-                            yield f'data: {progress_data}\n\n'
-                            
-                            # Small delay to prevent overwhelming the client
-                            await asyncio.sleep(0.01)
+                            # For TV shows, iterate through all episodes
+                            if section.type == 'show':
+                                try:
+                                    # Get all episodes for this show
+                                    episodes = item.episodes()
+                                    
+                                    for episode in episodes:
+                                        synced_items += 1
+                                        
+                                        # Extract metadata
+                                        title = getattr(episode, 'title', 'Unknown')
+                                        show_title = getattr(item, 'title', 'Unknown')
+                                        season_title = getattr(episode, 'seasonTitle', f'Season {episode.seasonNumber}') if hasattr(episode, 'seasonNumber') else None
+                                        
+                                        # Extract IDs from show guids (episodes inherit show IDs)
+                                        tmdb_id = None
+                                        tvdb_id = None
+                                        imdb_id = None
+                                        
+                                        for guid in getattr(item, 'guids', []):
+                                            guid_id = guid.id
+                                            if 'tmdb://' in guid_id:
+                                                tmdb_id = guid_id.split('tmdb://')[1]
+                                            elif 'tvdb://' in guid_id:
+                                                tvdb_id = guid_id.split('tvdb://')[1]
+                                            elif 'imdb://' in guid_id:
+                                                imdb_id = guid_id.split('imdb://')[1]
+                                        
+                                        # Calculate file size
+                                        file_size_bytes = 0
+                                        try:
+                                            for media in getattr(episode, 'media', []):
+                                                for part in getattr(media, 'parts', []):
+                                                    file_size_bytes += getattr(part, 'size', 0)
+                                        except:
+                                            pass
+                                        
+                                        file_size_mb = round(file_size_bytes / (1024 * 1024), 2) if file_size_bytes > 0 else None
+                                        
+                                        # Upsert episode to database
+                                        media_data = {
+                                            'server_id': server_id,
+                                            'plex_id': str(episode.ratingKey),
+                                            'title': title,
+                                            'type': 'episode',
+                                            'grandparent_title': show_title,
+                                            'parent_title': season_title,
+                                            'season_number': getattr(episode, 'seasonNumber', None),
+                                            'episode_number': getattr(episode, 'episodeNumber', None),
+                                            'year': getattr(episode, 'year', None),
+                                            'rating': getattr(episode, 'rating', None),
+                                            'duration_ms': getattr(episode, 'duration', None),
+                                            'date_added': getattr(episode, 'addedAt', datetime.now(timezone.utc)).isoformat(),
+                                            'summary': getattr(episode, 'summary', None),
+                                            'poster_url': getattr(episode, 'thumb', None),
+                                            'tmdb_id': tmdb_id,
+                                            'tvdb_id': tvdb_id,
+                                            'imdb_id': imdb_id,
+                                            'file_size_mb': file_size_mb,
+                                            'genres': [g.tag for g in getattr(item, 'genres', [])]  # Use show genres
+                                        }
+                                        
+                                        try:
+                                            supabase.table('media_items').upsert(
+                                                media_data,
+                                                on_conflict='server_id,plex_id'
+                                            ).execute()
+                                        except Exception as db_error:
+                                            logger.error(f"Failed to upsert episode {title}: {db_error}")
+                                        
+                                        # Calculate ETA
+                                        elapsed_seconds = (datetime.now(timezone.utc) - start_time).total_seconds()
+                                        items_per_second = synced_items / elapsed_seconds if elapsed_seconds > 0 else 0
+                                        remaining_items = total_items - synced_items
+                                        eta_seconds = int(remaining_items / items_per_second) if items_per_second > 0 else 0
+                                        
+                                        # Send progress update
+                                        progress_data = {
+                                            "status": "syncing",
+                                            "current": synced_items,
+                                            "total": total_items,
+                                            "title": f"{show_title} - S{episode.seasonNumber:02d}E{episode.episodeNumber:02d}",
+                                            "section": section_name,
+                                            "eta_seconds": eta_seconds,
+                                            "items_per_second": round(items_per_second, 1)
+                                        }
+                                        
+                                        yield f'data: {progress_data}\n\n'
+                                        
+                                        # Small delay to prevent overwhelming the client
+                                        await asyncio.sleep(0.01)
+                                        
+                                except Exception as show_error:
+                                    logger.error(f"Failed to sync episodes for show {item.title}: {show_error}")
+                                    continue
+                            else:
+                                # Handle movies
+                                synced_items += 1
+                                
+                                # Extract metadata
+                                title = getattr(item, 'title', 'Unknown')
+                                
+                                # Extract IDs from guids
+                                tmdb_id = None
+                                tvdb_id = None
+                                imdb_id = None
+                                
+                                for guid in getattr(item, 'guids', []):
+                                    guid_id = guid.id
+                                    if 'tmdb://' in guid_id:
+                                        tmdb_id = guid_id.split('tmdb://')[1]
+                                    elif 'tvdb://' in guid_id:
+                                        tvdb_id = guid_id.split('tvdb://')[1]
+                                    elif 'imdb://' in guid_id:
+                                        imdb_id = guid_id.split('imdb://')[1]
+                                
+                                # Calculate file size
+                                file_size_bytes = 0
+                                try:
+                                    for media in getattr(item, 'media', []):
+                                        for part in getattr(media, 'parts', []):
+                                            file_size_bytes += getattr(part, 'size', 0)
+                                except:
+                                    pass
+                                
+                                file_size_mb = round(file_size_bytes / (1024 * 1024), 2) if file_size_bytes > 0 else None
+                                
+                                # Upsert to database
+                                media_data = {
+                                    'server_id': server_id,
+                                    'plex_id': str(item.ratingKey),
+                                    'title': title,
+                                    'type': 'movie',
+                                    'year': getattr(item, 'year', None),
+                                    'rating': getattr(item, 'rating', None),
+                                    'duration_ms': getattr(item, 'duration', None),
+                                    'date_added': getattr(item, 'addedAt', datetime.now(timezone.utc)).isoformat(),
+                                    'summary': getattr(item, 'summary', None),
+                                    'poster_url': getattr(item, 'thumb', None),
+                                    'tmdb_id': tmdb_id,
+                                    'tvdb_id': tvdb_id,
+                                    'imdb_id': imdb_id,
+                                    'file_size_mb': file_size_mb,
+                                    'genres': [g.tag for g in getattr(item, 'genres', [])]
+                                }
+                                
+                                try:
+                                    supabase.table('media_items').upsert(
+                                        media_data,
+                                        on_conflict='server_id,plex_id'
+                                    ).execute()
+                                except Exception as db_error:
+                                    logger.error(f"Failed to upsert {title}: {db_error}")
+                                
+                                # Calculate ETA
+                                elapsed_seconds = (datetime.now(timezone.utc) - start_time).total_seconds()
+                                items_per_second = synced_items / elapsed_seconds if elapsed_seconds > 0 else 0
+                                remaining_items = total_items - synced_items
+                                eta_seconds = int(remaining_items / items_per_second) if items_per_second > 0 else 0
+                                
+                                # Send progress update
+                                progress_data = {
+                                    "status": "syncing",
+                                    "current": synced_items,
+                                    "total": total_items,
+                                    "title": title,
+                                    "section": section_name,
+                                    "eta_seconds": eta_seconds,
+                                    "items_per_second": round(items_per_second, 1)
+                                }
+                                
+                                yield f'data: {progress_data}\n\n'
+                                
+                                # Small delay to prevent overwhelming the client
+                                await asyncio.sleep(0.01)
                     
                     except Exception as section_error:
                         logger.error(f"Failed to sync section {section_name}: {section_error}")
@@ -293,7 +389,7 @@ async def get_storage_info(
     Get storage information from database (faster than querying Plex).
     
     Returns used space calculated from media_items table.
-    Total capacity would require server filesystem access which Plex doesn't expose.
+    Includes total capacity from system configuration if set.
     """
     
     try:
@@ -321,8 +417,8 @@ async def get_storage_info(
                 by_type[item_type]['size_mb'] += size_mb
         
         # Convert to human-readable
-        total_size_gb = round(total_size_mb / 1024, 2)
-        total_size_tb = round(total_size_mb / (1024 * 1024), 2)
+        total_used_gb = round(total_size_mb / 1024, 2)
+        total_used_tb = round(total_size_mb / (1024 * 1024), 2)
         
         # Format by_type for response
         by_type_formatted = {}
@@ -333,13 +429,38 @@ async def get_storage_info(
                 'size_tb': round(stats['size_mb'] / (1024 * 1024), 2)
             }
         
+        # Get total capacity from system config
+        total_capacity_gb = None
+        free_gb = None
+        used_percentage = None
+        capacity_configured = False
+        
+        try:
+            capacity_config = supabase.table('system_config')\
+                .select('value')\
+                .eq('key', 'storage_capacity')\
+                .execute()
+            
+            if capacity_config.data and len(capacity_config.data) > 0:
+                capacity_data = capacity_config.data[0]['value']
+                total_capacity_gb = capacity_data.get('total_gb')
+                
+                if total_capacity_gb:
+                    capacity_configured = True
+                    free_gb = round(total_capacity_gb - total_used_gb, 2)
+                    used_percentage = round((total_used_gb / total_capacity_gb) * 100, 1)
+        except Exception as config_error:
+            logger.warning(f"Could not fetch storage capacity config: {config_error}")
+        
         storage_info = {
             "total_items": total_items,
-            "total_used_mb": round(total_size_mb, 2),
-            "total_used_gb": total_size_gb,
-            "total_used_tb": total_size_tb,
+            "total_used_gb": total_used_gb,
+            "total_used_tb": total_used_tb,
+            "total_capacity_gb": total_capacity_gb,
+            "free_gb": free_gb,
+            "used_percentage": used_percentage,
+            "capacity_configured": capacity_configured,
             "by_type": by_type_formatted,
-            "note": "Total capacity not available from Plex API. This shows media library size only."
         }
         
         return storage_info

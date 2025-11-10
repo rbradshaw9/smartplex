@@ -54,9 +54,14 @@ export default function DeletionManagementPage() {
     total_items: number
     total_used_gb: number
     total_used_tb: number
+    total_capacity_gb?: number | null
+    free_gb?: number | null
+    used_percentage?: number | null
+    capacity_configured: boolean
     by_type?: Record<string, { count: number; size_gb: number }>
-    note?: string
   } | null>(null)
+  const [showCapacityConfig, setShowCapacityConfig] = useState(false)
+  const [capacityFormData, setCapacityFormData] = useState({ total_gb: '', notes: '' })
   const [scanResults, setScanResults] = useState<ScanResults | null>(null)
   const [showRuleForm, setShowRuleForm] = useState(false)
   const [editingRule, setEditingRule] = useState<DeletionRule | null>(null)
@@ -430,6 +435,48 @@ Type "DELETE" below to confirm:`
     }
   }
 
+  async function updateStorageCapacity() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      const totalGb = parseFloat(capacityFormData.total_gb)
+      if (isNaN(totalGb) || totalGb <= 0) {
+        setError('Please enter a valid capacity in GB')
+        return
+      }
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/admin/system/config/storage-capacity`,
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            total_gb: totalGb,
+            source: 'manual',
+            notes: capacityFormData.notes || 'Manually configured by admin'
+          })
+        }
+      )
+
+      if (response.ok) {
+        setSuccessMessage('Storage capacity updated successfully!')
+        setShowCapacityConfig(false)
+        setCapacityFormData({ total_gb: '', notes: '' })
+        loadStorageInfo()
+      } else {
+        const errorData = await response.json()
+        setError(errorData.detail || 'Failed to update storage capacity')
+      }
+    } catch (err) {
+      console.error('Failed to update storage capacity:', err)
+      setError('Failed to update storage capacity')
+    }
+  }
+
   async function deleteRule(ruleId: string, name: string) {
     if (!confirm(`Delete rule "${name}"?`)) return
 
@@ -704,14 +751,55 @@ Type "DELETE" below to confirm:`
               <div className="flex-1">
                 <h3 className="text-lg font-semibold mb-1">💾 Media Library Storage</h3>
                 <p className="text-slate-400 text-sm">
-                  {storageInfo.total_items.toLocaleString()} items • {storageInfo.note}
+                  {storageInfo.total_items.toLocaleString()} items
+                  {!storageInfo.capacity_configured && (
+                    <span className="text-yellow-500 ml-2">⚠️ Total capacity not configured</span>
+                  )}
                 </p>
               </div>
-              <div className="text-right">
-                <div className="text-3xl font-bold text-purple-400">{storageInfo.total_used_tb.toFixed(2)} TB</div>
-                <div className="text-slate-400 text-sm">{storageInfo.total_used_gb.toFixed(0)} GB total</div>
+              <div className="text-right flex items-center gap-4">
+                {storageInfo.capacity_configured && storageInfo.total_capacity_gb && (
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-400">{storageInfo.free_gb?.toFixed(0)} GB</div>
+                    <div className="text-slate-400 text-xs">Free Space</div>
+                  </div>
+                )}
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-purple-400">{storageInfo.total_used_tb.toFixed(2)} TB</div>
+                  <div className="text-slate-400 text-sm">
+                    {storageInfo.total_used_gb.toFixed(0)} GB used
+                    {storageInfo.capacity_configured && storageInfo.total_capacity_gb && (
+                      <span className="ml-1">
+                        of {(storageInfo.total_capacity_gb / 1024).toFixed(2)} TB ({storageInfo.used_percentage?.toFixed(1)}%)
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowCapacityConfig(true)}
+                  className="px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm transition-colors"
+                  title="Configure total capacity"
+                >
+                  ⚙️
+                </button>
               </div>
             </div>
+            
+            {/* Progress bar if capacity configured */}
+            {storageInfo.capacity_configured && storageInfo.used_percentage && (
+              <div className="mb-4">
+                <div className="w-full bg-slate-700 rounded-full h-3">
+                  <div 
+                    className={`h-3 rounded-full transition-all ${
+                      storageInfo.used_percentage > 90 ? 'bg-red-500' :
+                      storageInfo.used_percentage > 75 ? 'bg-yellow-500' :
+                      'bg-green-500'
+                    }`}
+                    style={{ width: `${Math.min(storageInfo.used_percentage, 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
             
             {/* Breakdown by type */}
             {storageInfo.by_type && Object.keys(storageInfo.by_type).length > 0 && (
@@ -1196,6 +1284,89 @@ Type "DELETE" below to confirm:`
             ) : (
               <p className="text-center text-slate-400 py-8">No candidates found</p>
             )}
+          </div>
+        )}
+        
+        {/* Storage Capacity Configuration Modal */}
+        {showCapacityConfig && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-800 rounded-lg p-8 max-w-md w-full">
+              <h2 className="text-2xl font-bold mb-6">Configure Storage Capacity</h2>
+              
+              {storageInfo && (
+                <div className="mb-6 p-4 bg-slate-700/50 rounded">
+                  <div className="text-sm text-slate-400 mb-2">Current Usage</div>
+                  <div className="text-2xl font-bold text-purple-400">{storageInfo.total_used_tb.toFixed(2)} TB</div>
+                  <div className="text-sm text-slate-500">{storageInfo.total_used_gb.toFixed(0)} GB used</div>
+                </div>
+              )}
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Total Capacity (GB)</label>
+                  <input
+                    type="number"
+                    step="100"
+                    value={capacityFormData.total_gb}
+                    onChange={(e) => setCapacityFormData({ ...capacityFormData, total_gb: e.target.value })}
+                    placeholder="e.g., 10000 for 10TB"
+                    className="w-full bg-slate-700 border border-slate-600 rounded px-4 py-2"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">
+                    Enter your total storage capacity in gigabytes
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">Notes (optional)</label>
+                  <input
+                    type="text"
+                    value={capacityFormData.notes}
+                    onChange={(e) => setCapacityFormData({ ...capacityFormData, notes: e.target.value })}
+                    placeholder="e.g., Ultra.cc 10TB plan"
+                    className="w-full bg-slate-700 border border-slate-600 rounded px-4 py-2"
+                  />
+                </div>
+                
+                {capacityFormData.total_gb && (
+                  <div className="p-3 bg-blue-900/30 border border-blue-500/50 rounded text-sm">
+                    <div className="text-blue-300 mb-1">Preview:</div>
+                    <div className="text-slate-300">
+                      Total: {(parseFloat(capacityFormData.total_gb) / 1024).toFixed(2)} TB
+                    </div>
+                    {storageInfo && (
+                      <>
+                        <div className="text-slate-300">
+                          Used: {storageInfo.total_used_tb.toFixed(2)} TB ({((storageInfo.total_used_gb / parseFloat(capacityFormData.total_gb)) * 100).toFixed(1)}%)
+                        </div>
+                        <div className="text-green-400">
+                          Free: {((parseFloat(capacityFormData.total_gb) - storageInfo.total_used_gb) / 1024).toFixed(2)} TB
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => {
+                    setShowCapacityConfig(false)
+                    setCapacityFormData({ total_gb: '', notes: '' })
+                  }}
+                  className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={updateStorageCapacity}
+                  disabled={!capacityFormData.total_gb}
+                  className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Save Capacity
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
