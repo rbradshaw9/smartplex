@@ -272,6 +272,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_system_settings_updated_at ON system_settings;
 CREATE TRIGGER update_system_settings_updated_at
   BEFORE UPDATE ON system_settings
   FOR EACH ROW
