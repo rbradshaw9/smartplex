@@ -158,6 +158,16 @@ class DeletionService:
             # Item qualifies for deletion
             logger.info(f"🎯 DELETION CANDIDATE: '{item['title']}' - Added {days_since_added}d ago, Last viewed {days_since_viewed}d ago, Views: {view_count}")
             
+            # Convert file size from bytes to MB
+            file_size_mb = None
+            if item.get('file_size_bytes'):
+                file_size_mb = item['file_size_bytes'] / (1024 * 1024)
+            
+            # Get rating from metadata if not in main fields
+            rating = item.get('rating')
+            if not rating and isinstance(item.get('metadata'), dict):
+                rating = item['metadata'].get('rating')
+            
             candidate = {
                 "id": item['id'],
                 "plex_id": item['plex_id'],
@@ -168,8 +178,8 @@ class DeletionService:
                 "view_count": view_count,
                 "days_since_added": days_since_added,
                 "days_since_viewed": days_since_viewed,
-                "rating": item.get('rating'),
-                "file_size_mb": item.get('file_size'),
+                "rating": rating,
+                "file_size_mb": file_size_mb,
             }
             
             candidates.append(candidate)

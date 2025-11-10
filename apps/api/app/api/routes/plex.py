@@ -245,6 +245,15 @@ async def get_watch_history(
                             # Get user rating if exists
                             user_rating = getattr(item, 'userRating', None)
                             
+                            # Get file size from media parts
+                            file_size_bytes = 0
+                            try:
+                                for media in getattr(item, 'media', []):
+                                    for part in getattr(media, 'parts', []):
+                                        file_size_bytes += getattr(part, 'size', 0)
+                            except:
+                                pass
+                            
                             watch_data = {
                                 "title": item.title,
                                 "type": item.type,
@@ -254,6 +263,7 @@ async def get_watch_history(
                                 "duration": duration,
                                 "last_viewed_at": item.lastViewedAt.isoformat() if hasattr(item, 'lastViewedAt') and item.lastViewedAt else None,
                                 "plex_added_at": item.addedAt.isoformat() if hasattr(item, 'addedAt') and item.addedAt else None,
+                                "file_size_bytes": file_size_bytes if file_size_bytes > 0 else None,
                                 "view_count": view_count,
                                 "user_rating": user_rating,
                                 "thumb": getattr(item, 'thumb', None),

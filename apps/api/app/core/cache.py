@@ -166,6 +166,7 @@ class PlexCache:
                             'title': item['title'],
                             'year': item.get('year'),
                             'duration_ms': item.get('duration'),
+                            'file_size_bytes': item.get('file_size_bytes'),  # Store file size
                             'metadata': {
                                 'thumb': item.get('thumb'),
                                 'summary': item.get('summary'),
