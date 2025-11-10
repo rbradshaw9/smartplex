@@ -5,7 +5,7 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { useRouter, usePathname } from 'next/navigation'
 import { User } from '@supabase/supabase-js'
 import { Database } from '@smartplex/db/types'
-import { AdminModeToggle } from './admin-mode-toggle'
+import { UserMenu } from './user-menu'
 
 interface HeaderProps {
   user?: User | null
@@ -40,13 +40,6 @@ export function Header({ user }: HeaderProps) {
     
     checkAdminStatus()
   }, [user, supabase])
-
-  const handleSignOut = async () => {
-    setLoading(true)
-    await supabase.auth.signOut()
-    router.push('/')
-    setLoading(false)
-  }
 
   const isActive = (path: string) => {
     return pathname === path
@@ -116,19 +109,7 @@ export function Header({ user }: HeaderProps) {
 
           <div className="flex items-center space-x-4">
             {user ? (
-              <>
-                <AdminModeToggle isAdmin={isAdmin} />
-                <div className="hidden sm:block text-sm text-slate-300">
-                  {user.email}
-                </div>
-                <button
-                  onClick={handleSignOut}
-                  disabled={loading}
-                  className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-colors text-sm"
-                >
-                  {loading ? 'Signing out...' : 'Sign Out'}
-                </button>
-              </>
+              <UserMenu user={user} isAdmin={isAdmin} />
             ) : (
               <button
                 onClick={() => router.push('/')}
