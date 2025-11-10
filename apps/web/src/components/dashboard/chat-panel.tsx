@@ -79,17 +79,18 @@ export function ChatPanel() {
         content: data.response || 'I apologize, but I couldn\'t generate a response.',
         timestamp: new Date(),
       }
+      
       setMessages(prev => [...prev, assistantMessage])
-      setIsLoading(false)
     } catch (error) {
       console.error('❌ Chat error:', error)
-      setIsLoading(false)
       const errorMessage: ChatMessage = {
         role: 'assistant',
         content: 'Sorry, I encountered an error connecting to the AI service. Please try again later.',
         timestamp: new Date(),
       }
       setMessages(prev => [...prev, errorMessage])
+    } finally {
+      setIsLoading(false)
     }
   }
 

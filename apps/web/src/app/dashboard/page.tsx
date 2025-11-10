@@ -7,10 +7,16 @@ import { Dashboard } from '@/components/dashboard/dashboard'
 import { Database } from '@smartplex/db/types'
 import { User } from '@supabase/supabase-js'
 
+interface Recommendation {
+  title: string
+  reason: string
+}
+
 // Force client-side only rendering to avoid SSR hydration issues
 export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([])
   const router = useRouter()
   const [supabase] = useState(() => createClientComponentClient<Database>())
 
@@ -25,6 +31,28 @@ export default function DashboardPage() {
       
       setUser(session.user)
       setLoading(false)
+      
+      // Fetch AI recommendations
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/ai/recommendations`,
+          {
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+          }
+        )
+        
+        if (response.ok) {
+          const data = await response.json()
+          console.log('📊 Fetched recommendations:', data)
+          if (data.recommendations && Array.isArray(data.recommendations)) {
+            setRecommendations(data.recommendations)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch recommendations:', error)
+      }
     }
 
     checkAuth()
@@ -52,15 +80,11 @@ export default function DashboardPage() {
     recentlyWatched: [],
   }
 
-  const mockRecommendations = [
-    { title: 'Loading...', reason: 'Fetching your personalized recommendations' },
-  ]
-
   return (
     <Dashboard 
       user={user} 
       userStats={mockUserStats}
-      recommendations={mockRecommendations}
+      recommendations={recommendations}
     />
   )
 }

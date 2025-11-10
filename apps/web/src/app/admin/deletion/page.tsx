@@ -266,26 +266,22 @@ export default function DeletionManagementPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return
 
-      // Get user's Plex token from users table
-      const { data: userData } = await supabase
-        .from('users')
-        .select('plex_token')
-        .eq('id', session.user.id)
-        .single()
-
-      if (!userData?.plex_token) {
-        setError('No Plex token found. Please reconnect your Plex account.')
+      // Get Plex token from localStorage
+      const plexToken = localStorage.getItem('plex_token')
+      
+      if (!plexToken) {
+        setError('No Plex token found. Please reconnect your Plex account from the dashboard.')
         setSyncing(false)
         return
       }
 
       // Fetch watch history which will sync media items with Plex data
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/plex/watch-history?plex_token=${userData.plex_token}&limit=500`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/plex/watch-history?plex_token=${plexToken}&limit=500`,
         {
           headers: {
-            'Authorization': `Bearer ${session.access_token}`
-          }
+            'Authorization': `Bearer ${session.access_token}`,
+          },
         }
       )
 
