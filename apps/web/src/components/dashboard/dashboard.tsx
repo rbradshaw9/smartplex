@@ -44,6 +44,12 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
           return
         }
 
+        console.log('API URL configured as:', apiUrl)
+        if (!apiUrl.startsWith('https://')) {
+          console.error('⚠️ WARNING: API_URL is HTTP not HTTPS! This will be blocked by browser.')
+          console.error('⚠️ Go to Vercel → Settings → Environment Variables and change to HTTPS')
+        }
+
         // First, try to load cached data from Supabase
         const { data: cachedStats, error: statsError } = await supabase
           .from('user_stats_cache')
