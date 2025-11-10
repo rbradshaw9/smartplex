@@ -8,6 +8,13 @@ interface ChatMessage {
   timestamp: Date
 }
 
+const SUGGESTED_PROMPTS = [
+  "What should I watch tonight?",
+  "What are my most watched genres?",
+  "Find similar shows to The Office",
+  "Recommend a sci-fi movie",
+]
+
 export function ChatPanel() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -18,13 +25,17 @@ export function ChatPanel() {
   ])
   const [inputMessage, setInputMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [showSuggestions, setShowSuggestions] = useState(true)
 
-  const handleSendMessage = async () => {
-    if (!inputMessage.trim()) return
+  const handleSendMessage = async (message?: string) => {
+    const messageToSend = message || inputMessage
+    if (!messageToSend.trim()) return
+
+    setShowSuggestions(false)
 
     const userMessage: ChatMessage = {
       role: 'user',
-      content: inputMessage,
+      content: messageToSend,
       timestamp: new Date(),
     }
 
@@ -136,6 +147,24 @@ export function ChatPanel() {
         )}
       </div>
       
+      {/* Suggested prompts (show when chat is empty) */}
+      {showSuggestions && messages.length === 1 && (
+        <div className="mb-4">
+          <p className="text-slate-400 text-xs mb-2">Try asking:</p>
+          <div className="flex flex-wrap gap-2">
+            {SUGGESTED_PROMPTS.map((prompt, index) => (
+              <button
+                key={index}
+                onClick={() => handleSendMessage(prompt)}
+                className="bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm px-3 py-1.5 rounded-lg transition-colors"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Input */}
       <div className="flex space-x-2">
         <input
@@ -148,7 +177,7 @@ export function ChatPanel() {
           disabled={isLoading}
         />
         <button
-          onClick={handleSendMessage}
+          onClick={() => handleSendMessage()}
           disabled={isLoading || !inputMessage.trim()}
           className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg transition-colors"
         >

@@ -88,15 +88,55 @@ async def chat_with_ai(
         # Initialize AI service
         ai_service = AIService(settings)
         
-        # Get user's viewing context from database
-        user_stats = supabase.table('user_stats').select('*').eq('user_id', current_user['id']).execute()
+        # Get user's viewing context from database with full watch history
+        user_stats = supabase.table('user_stats')\
+            .select('*, media_items(*)')\
+            .eq('user_id', current_user['id'])\
+            .order('last_played_at', desc=True)\
+            .limit(100)\
+            .execute()
         
-        # Build user context
+        # Build comprehensive user context with actual watch history
+        recent_watches = []
+        genre_counts = {}
+        total_watch_count = 0
+        
+        if user_stats.data:
+            for stat in user_stats.data:
+                total_watch_count += stat.get('play_count', 0)
+                if stat.get('media_items'):
+                    media = stat['media_items']
+                    
+                    # Add to recent watches (last 10)
+                    if len(recent_watches) < 10:
+                        recent_watches.append({
+                            "title": media.get('title'),
+                            "type": media.get('type'),
+                            "year": media.get('year'),
+                            "rating": stat.get('rating'),
+                            "play_count": stat.get('play_count', 0),
+                            "last_played": stat.get('last_played_at')
+                        })
+                    
+                    # Count genres for favorites
+                    metadata = media.get('metadata', {})
+                    genres = metadata.get('genres', [])
+                    if isinstance(genres, list):
+                        for genre in genres:
+                            genre_counts[genre] = genre_counts.get(genre, 0) + stat.get('play_count', 1)
+        
+        # Get top 3 favorite genres
+        favorite_genres = sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+        favorite_genres = [genre for genre, _ in favorite_genres]
+        
+        # Build enriched user context
         user_context = {
             "user_id": current_user["id"],
-            "total_watched": len(user_stats.data) if user_stats.data else 0,
-            "favorite_genres": [],  # TODO: Calculate from watch history
-            "recent_watches": []  # TODO: Get from user_stats
+            "total_items_watched": len(user_stats.data) if user_stats.data else 0,
+            "total_watch_count": total_watch_count,
+            "favorite_genres": favorite_genres,
+            "recent_watches": recent_watches,
+            "viewing_summary": f"User has watched {len(user_stats.data)} different titles with {total_watch_count} total views. Favorite genres: {', '.join(favorite_genres) if favorite_genres else 'none yet'}."
         }
         
         # Get recent conversation history (last 5 messages)
@@ -113,7 +153,7 @@ async def chat_with_ai(
                 conversation_history.append({"role": "user", "content": chat['message']})
                 conversation_history.append({"role": "assistant", "content": chat['response']})
         
-        # Get AI response
+      # Get AI response with enriched user context
         ai_response = await ai_service.chat(
             message=chat_message.message,
             user_context=user_context,

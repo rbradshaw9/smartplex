@@ -49,6 +49,7 @@ export default function DeletionManagementPage() {
   const [scanning, setScanning] = useState(false)
   const [executing, setExecuting] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0, eta: '' })
   const [scanResults, setScanResults] = useState<ScanResults | null>(null)
   const [showRuleForm, setShowRuleForm] = useState(false)
   const [editingRule, setEditingRule] = useState<DeletionRule | null>(null)
@@ -267,6 +268,7 @@ export default function DeletionManagementPage() {
     setSyncing(true)
     setError('')
     setSuccessMessage('')
+    setSyncProgress({ current: 0, total: 0, eta: '' })
 
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -280,6 +282,11 @@ export default function DeletionManagementPage() {
         setSyncing(false)
         return
       }
+
+      const startTime = Date.now()
+      
+      // Show initial progress
+      setSyncProgress({ current: 0, total: 0, eta: 'Connecting to Plex...' })
 
       // Fetch watch history which will sync ALL items (remove limit to get entire library)
       const response = await fetch(
@@ -295,9 +302,23 @@ export default function DeletionManagementPage() {
         const data = await response.json()
         const syncedCount = data.watch_history?.length || 0
         const totalItems = data.stats?.total_watched || syncedCount
+        
+        // Calculate elapsed time
+        const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000)
+        
+        // Show completion
+        setSyncProgress({ 
+          current: syncedCount, 
+          total: totalItems, 
+          eta: `Completed in ${elapsedSeconds}s` 
+        })
+        
         setSuccessMessage(`✅ Successfully synced ${syncedCount} items from Plex with updated metadata! (Total in library: ${totalItems})`)
         // Clear success message after 8 seconds (longer to read the message)
-        setTimeout(() => setSuccessMessage(''), 8000)
+        setTimeout(() => {
+          setSuccessMessage('')
+          setSyncProgress({ current: 0, total: 0, eta: '' })
+        }, 8000)
       } else {
         setError('Failed to sync library. Please try again.')
       }
@@ -410,6 +431,42 @@ export default function DeletionManagementPage() {
         {successMessage && (
           <div className="bg-green-900/50 border border-green-500 rounded-lg p-4 mb-6">
             {successMessage}
+          </div>
+        )}
+
+        {/* Sync Progress Indicator */}
+        {syncing && syncProgress.current > 0 && (
+          <div className="bg-purple-900/30 border border-purple-500/50 rounded-lg p-6 mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <svg className="animate-spin h-5 w-5 text-purple-400" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                <span className="text-purple-300 font-medium">
+                  Syncing Library: {syncProgress.current} / {syncProgress.total} items
+                </span>
+              </div>
+              <span className="text-purple-400 text-sm">{syncProgress.eta}</span>
+            </div>
+            <div className="w-full bg-slate-700 rounded-full h-2.5">
+              <div 
+                className="bg-purple-500 h-2.5 rounded-full transition-all duration-300"
+                style={{ width: `${syncProgress.total > 0 ? (syncProgress.current / syncProgress.total) * 100 : 0}%` }}
+              />
+            </div>
+          </div>
+        )}
+        
+        {syncing && syncProgress.current === 0 && (
+          <div className="bg-purple-900/30 border border-purple-500/50 rounded-lg p-6 mb-6">
+            <div className="flex items-center gap-3">
+              <svg className="animate-spin h-5 w-5 text-purple-400" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              <span className="text-purple-300 font-medium">{syncProgress.eta}</span>
+            </div>
           </div>
         )}
 
