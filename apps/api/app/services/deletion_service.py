@@ -86,6 +86,10 @@ class DeletionService:
             logger.info("No media items found in database")
             return []
         
+        logger.info(f"📊 Processing {len(media_response.data)} media items from database")
+        logger.info(f"🗓️ Grace cutoff date: {grace_cutoff.isoformat()}")
+        logger.info(f"👁️ Inactivity cutoff date: {inactivity_cutoff.isoformat()}")
+        
         candidates = []
         
         for item in media_response.data:
@@ -93,14 +97,16 @@ class DeletionService:
             date_added = datetime.fromisoformat(item['added_at'].replace('Z', '+00:00')) if item.get('added_at') else None
             
             if not date_added:
-                logger.debug(f"Skipping {item['title']}: no date_added")
+                logger.info(f"❌ Skipping '{item['title']}': no date_added")
                 continue
             
             days_since_added = (now - date_added).days
             
             if date_added > grace_cutoff:
-                logger.debug(f"Skipping {item['title']}: too new ({days_since_added} days old, needs {rule['grace_period_days']})")
+                logger.info(f"❌ Skipping '{item['title']}': too new ({days_since_added} days old, needs >{rule['grace_period_days']} days)")
                 continue
+            
+            logger.info(f"✅ '{item['title']}' passed grace period check ({days_since_added} days old)")
             
             # Check 2: Inactivity - find most recent view across all users
             user_stats = item.get('user_stats', [])
@@ -109,6 +115,7 @@ class DeletionService:
                 # Never watched - still subject to inactivity check
                 last_viewed = date_added  # Use date_added as fallback
                 view_count = 0
+                logger.info(f"  📺 Never watched, using date_added as last_viewed")
             else:
                 # Find most recent view
                 last_viewed = max(
@@ -117,27 +124,32 @@ class DeletionService:
                     default=date_added
                 )
                 view_count = sum(stat.get('play_count', 0) for stat in user_stats)
+                logger.info(f"  📺 View count: {view_count}, last viewed: {last_viewed.isoformat()}")
             
             days_since_viewed = (now - last_viewed).days
             
             if last_viewed > inactivity_cutoff:
-                logger.debug(f"Skipping {item['title']}: recently viewed ({days_since_viewed} days ago)")
+                logger.info(f"❌ Skipping '{item['title']}': recently viewed ({days_since_viewed} days ago, needs >{rule['inactivity_threshold_days']} days)")
                 continue
+            
+            logger.info(f"✅ '{item['title']}' passed inactivity check ({days_since_viewed} days since last view)")
             
             # Check 3: Rating filter (if specified)
             if rule.get('min_rating') and item.get('rating'):
                 if item['rating'] >= rule['min_rating']:
-                    logger.debug(f"Skipping {item['title']}: rating {item['rating']} >= {rule['min_rating']}")
+                    logger.info(f"❌ Skipping '{item['title']}': rating {item['rating']} >= {rule['min_rating']}")
                     continue
             
             # Check 4: Genre exclusions
             if rule.get('excluded_genres') and item.get('genres'):
                 item_genres = item['genres'] if isinstance(item['genres'], list) else []
                 if any(genre in rule['excluded_genres'] for genre in item_genres):
-                    logger.debug(f"Skipping {item['title']}: genre excluded")
+                    logger.info(f"❌ Skipping '{item['title']}': genre in exclusion list")
                     continue
             
             # Item qualifies for deletion
+            logger.info(f"🎯 DELETION CANDIDATE: '{item['title']}' - Added {days_since_added}d ago, Last viewed {days_since_viewed}d ago, Views: {view_count}")
+            
             candidate = {
                 "id": item['id'],
                 "plex_id": item['plex_id'],
