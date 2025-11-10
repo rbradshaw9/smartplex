@@ -56,6 +56,14 @@ export default function DeletionManagementPage() {
   const [editingRule, setEditingRule] = useState<DeletionRule | null>(null)
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
+  
+  // Selection and filtering state
+  const [selectedCandidates, setSelectedCandidates] = useState<Set<string>>(new Set())
+  const [sortBy, setSortBy] = useState<'title' | 'days_since_added' | 'days_since_viewed' | 'file_size_mb' | 'rating'>('days_since_viewed')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
+  const [filterType, setFilterType] = useState<string>('all')
+  const [filterMinSize, setFilterMinSize] = useState<string>('')
+  const [filterMaxSize, setFilterMaxSize] = useState<string>('')
 
   // Form state
   const [formData, setFormData] = useState({
@@ -438,6 +446,147 @@ export default function DeletionManagementPage() {
     return `${(mb / 1024).toFixed(2)} GB`
   }
 
+  // Get filtered and sorted candidates
+  const getFilteredAndSortedCandidates = () => {
+    if (!scanResults) return []
+    
+    let filtered = scanResults.candidates
+    
+    // Filter by type
+    if (filterType !== 'all') {
+      filtered = filtered.filter(c => c.type === filterType)
+    }
+    
+    // Filter by size
+    if (filterMinSize) {
+      const minMB = parseFloat(filterMinSize) * 1024 // Convert GB to MB
+      filtered = filtered.filter(c => (c.file_size_mb || 0) >= minMB)
+    }
+    if (filterMaxSize) {
+      const maxMB = parseFloat(filterMaxSize) * 1024 // Convert GB to MB
+      filtered = filtered.filter(c => (c.file_size_mb || 0) <= maxMB)
+    }
+    
+    // Sort
+    const sorted = [...filtered].sort((a, b) => {
+      let aVal: any = a[sortBy]
+      let bVal: any = b[sortBy]
+      
+      // Handle nulls
+      if (aVal === null || aVal === undefined) aVal = sortBy === 'rating' ? 0 : 999999
+      if (bVal === null || bVal === undefined) bVal = sortBy === 'rating' ? 0 : 999999
+      
+      // Handle strings (title)
+      if (sortBy === 'title') {
+        return sortDirection === 'asc' 
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal)
+      }
+      
+      // Handle numbers
+      return sortDirection === 'asc' ? aVal - bVal : bVal - aVal
+    })
+    
+    return sorted
+  }
+
+  const handleSort = (column: typeof sortBy) => {
+    if (sortBy === column) {
+      // Toggle direction
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortBy(column)
+      setSortDirection('desc')
+    }
+  }
+
+  const toggleSelectCandidate = (id: string) => {
+    const newSelected = new Set(selectedCandidates)
+    if (newSelected.has(id)) {
+      newSelected.delete(id)
+    } else {
+      newSelected.add(id)
+    }
+    setSelectedCandidates(newSelected)
+  }
+
+  const toggleSelectAll = () => {
+    const filtered = getFilteredAndSortedCandidates()
+    if (selectedCandidates.size === filtered.length) {
+      // Deselect all
+      setSelectedCandidates(new Set())
+    } else {
+      // Select all filtered
+      setSelectedCandidates(new Set(filtered.map(c => c.id)))
+    }
+  }
+
+  const deleteSelected = async (dryRun: boolean = false) => {
+    if (selectedCandidates.size === 0) {
+      alert('Please select at least one item to delete')
+      return
+    }
+
+    if (!dryRun && !confirm(`⚠️ WARNING: This will permanently delete ${selectedCandidates.size} file(s) from your library!\n\nAre you absolutely sure?`)) {
+      return
+    }
+
+    setExecuting(true)
+    setError('')
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session || !scanResults) return
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/admin/deletion/execute`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ 
+            rule_id: scanResults.rule_id, 
+            dry_run: dryRun,
+            candidate_ids: Array.from(selectedCandidates)
+          })
+        }
+      )
+
+      if (response.ok) {
+        const results = await response.json()
+        const { deleted, failed, total_size_mb } = results.results
+        
+        if (dryRun) {
+          alert(`✅ Dry Run Complete!\n\n` +
+                `Would delete: ${deleted} items\n` +
+                `Failed: ${failed} items\n` +
+                `Space to free: ${(total_size_mb / 1024).toFixed(2)} GB`)
+        } else {
+          alert(`✅ Deletion Complete!\n\n` +
+                `Deleted: ${deleted} items\n` +
+                `Failed: ${failed} items\n` +
+                `Space freed: ${(total_size_mb / 1024).toFixed(2)} GB`)
+        }
+        
+        // Clear selection and rescan
+        setSelectedCandidates(new Set())
+        setScanResults(null)
+        loadRules()
+        loadStorageInfo()
+      } else {
+        const error = await response.json()
+        setError(error.detail || 'Failed to execute deletion')
+      }
+    } catch (err) {
+      setError('Failed to execute deletion')
+      console.error(err)
+    } finally {
+      setExecuting(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -803,23 +952,78 @@ export default function DeletionManagementPage() {
               <div>
                 <h3 className="text-2xl font-bold">Deletion Candidates</h3>
                 <p className="text-slate-400">
-                  Found {scanResults.total_candidates} items matching deletion criteria
+                  Found {scanResults.total_candidates} items • {selectedCandidates.size} selected
                 </p>
               </div>
               <div className="flex gap-3">
                 <button
-                  onClick={() => executeDeletion(scanResults.rule_id, true)}
-                  disabled={executing}
-                  className="bg-yellow-600 hover:bg-yellow-700 disabled:bg-yellow-800 px-6 py-2 rounded font-semibold transition-colors"
+                  onClick={() => deleteSelected(true)}
+                  disabled={executing || selectedCandidates.size === 0}
+                  className="bg-yellow-600 hover:bg-yellow-700 disabled:bg-yellow-800 disabled:cursor-not-allowed px-6 py-2 rounded font-semibold transition-colors"
                 >
-                  {executing ? 'Processing...' : 'Dry Run'}
+                  {executing ? 'Processing...' : `Dry Run (${selectedCandidates.size})`}
                 </button>
                 <button
-                  onClick={() => executeDeletion(scanResults.rule_id, false)}
-                  disabled={executing}
-                  className="bg-red-600 hover:bg-red-700 disabled:bg-red-800 px-6 py-2 rounded font-semibold transition-colors"
+                  onClick={() => deleteSelected(false)}
+                  disabled={executing || selectedCandidates.size === 0}
+                  className="bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:cursor-not-allowed px-6 py-2 rounded font-semibold transition-colors"
                 >
-                  {executing ? 'Processing...' : '⚠️ Execute Deletion'}
+                  {executing ? 'Processing...' : `⚠️ Delete (${selectedCandidates.size})`}
+                </button>
+              </div>
+            </div>
+
+            {/* Filters and Controls */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 bg-slate-700/50 rounded-lg">
+              <div>
+                <label className="block text-xs font-medium mb-1 text-slate-400">Type</label>
+                <select 
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value)}
+                  className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm"
+                >
+                  <option value="all">All Types</option>
+                  <option value="movie">Movies</option>
+                  <option value="show">TV Shows</option>
+                  <option value="season">Seasons</option>
+                  <option value="episode">Episodes</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-xs font-medium mb-1 text-slate-400">Min Size (GB)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={filterMinSize}
+                  onChange={(e) => setFilterMinSize(e.target.value)}
+                  placeholder="0"
+                  className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-xs font-medium mb-1 text-slate-400">Max Size (GB)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={filterMaxSize}
+                  onChange={(e) => setFilterMaxSize(e.target.value)}
+                  placeholder="100"
+                  className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm"
+                />
+              </div>
+              
+              <div className="flex items-end">
+                <button
+                  onClick={() => {
+                    setFilterType('all')
+                    setFilterMinSize('')
+                    setFilterMaxSize('')
+                  }}
+                  className="w-full bg-slate-600 hover:bg-slate-500 px-4 py-2 rounded text-sm font-medium transition-colors"
+                >
+                  Clear Filters
                 </button>
               </div>
             </div>
@@ -829,18 +1033,64 @@ export default function DeletionManagementPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-slate-700">
                     <tr>
-                      <th className="text-left p-3">Title</th>
+                      <th className="text-left p-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedCandidates.size === getFilteredAndSortedCandidates().length && selectedCandidates.size > 0}
+                          onChange={toggleSelectAll}
+                          className="w-4 h-4 cursor-pointer"
+                        />
+                      </th>
+                      <th 
+                        className="text-left p-3 cursor-pointer hover:bg-slate-600"
+                        onClick={() => handleSort('title')}
+                      >
+                        Title {sortBy === 'title' && (sortDirection === 'asc' ? '↑' : '↓')}
+                      </th>
                       <th className="text-left p-3">Type</th>
-                      <th className="text-right p-3">Days Old</th>
-                      <th className="text-right p-3">Days Unwatched</th>
+                      <th 
+                        className="text-right p-3 cursor-pointer hover:bg-slate-600"
+                        onClick={() => handleSort('days_since_added')}
+                      >
+                        Days Old {sortBy === 'days_since_added' && (sortDirection === 'asc' ? '↑' : '↓')}
+                      </th>
+                      <th 
+                        className="text-right p-3 cursor-pointer hover:bg-slate-600"
+                        onClick={() => handleSort('days_since_viewed')}
+                      >
+                        Days Unwatched {sortBy === 'days_since_viewed' && (sortDirection === 'asc' ? '↑' : '↓')}
+                      </th>
                       <th className="text-right p-3">Views</th>
-                      <th className="text-right p-3">Rating</th>
-                      <th className="text-right p-3">Size</th>
+                      <th 
+                        className="text-right p-3 cursor-pointer hover:bg-slate-600"
+                        onClick={() => handleSort('rating')}
+                      >
+                        Rating {sortBy === 'rating' && (sortDirection === 'asc' ? '↑' : '↓')}
+                      </th>
+                      <th 
+                        className="text-right p-3 cursor-pointer hover:bg-slate-600"
+                        onClick={() => handleSort('file_size_mb')}
+                      >
+                        Size {sortBy === 'file_size_mb' && (sortDirection === 'asc' ? '↑' : '↓')}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {scanResults.candidates.map((candidate) => (
-                      <tr key={candidate.id} className="border-t border-slate-700 hover:bg-slate-750">
+                    {getFilteredAndSortedCandidates().map((candidate) => (
+                      <tr 
+                        key={candidate.id} 
+                        className={`border-t border-slate-700 hover:bg-slate-750 transition-colors ${
+                          selectedCandidates.has(candidate.id) ? 'bg-purple-900/20' : ''
+                        }`}
+                      >
+                        <td className="p-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedCandidates.has(candidate.id)}
+                            onChange={() => toggleSelectCandidate(candidate.id)}
+                            className="w-4 h-4 cursor-pointer"
+                          />
+                        </td>
                         <td className="p-3 font-medium">{candidate.title}</td>
                         <td className="p-3 text-slate-400">{candidate.type}</td>
                         <td className="p-3 text-right">{candidate.days_since_added}d</td>
@@ -856,6 +1106,23 @@ export default function DeletionManagementPage() {
                     ))}
                   </tbody>
                 </table>
+                
+                {/* Summary Footer */}
+                <div className="mt-4 pt-4 border-t border-slate-700 flex justify-between text-sm">
+                  <div className="text-slate-400">
+                    Showing {getFilteredAndSortedCandidates().length} of {scanResults.candidates.length} items
+                  </div>
+                  {selectedCandidates.size > 0 && (
+                    <div className="text-purple-400 font-medium">
+                      Selected: {selectedCandidates.size} items • {
+                        (getFilteredAndSortedCandidates()
+                          .filter(c => selectedCandidates.has(c.id))
+                          .reduce((sum, c) => sum + (c.file_size_mb || 0), 0) / 1024
+                        ).toFixed(2)
+                      } GB
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <p className="text-center text-slate-400 py-8">No candidates found</p>
