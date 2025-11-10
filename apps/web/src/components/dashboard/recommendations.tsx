@@ -21,7 +21,8 @@ export function Recommendations({ recommendations, onReload, isLoading = false }
   
   // Filter recommendations based on selected filters
   const filteredRecommendations = recommendations.filter(item => {
-    if (filter !== 'all' && item.type !== filter) return false
+    // Only filter if a specific type is selected AND the item has a type
+    if (filter !== 'all' && item.type && item.type !== filter) return false
     // Genre filtering would require genre data from API
     return true
   })
@@ -111,9 +112,9 @@ export function Recommendations({ recommendations, onReload, isLoading = false }
         {filteredRecommendations && filteredRecommendations.length > 0 ? (
           filteredRecommendations.map((item, index) => (
             <div key={index} className="bg-slate-700 rounded-lg p-4 hover:bg-slate-600/50 transition-colors">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-white font-medium">{item.title}</h3>
                     {item.year && (
                       <span className="text-slate-500 text-sm">({item.year})</span>
@@ -124,9 +125,9 @@ export function Recommendations({ recommendations, onReload, isLoading = false }
                       </span>
                     )}
                   </div>
-                  <p className="text-slate-400 text-sm mt-1">{item.reason}</p>
+                  <p className="text-slate-400 text-sm mt-2 line-clamp-2">{item.reason}</p>
                 </div>
-                <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition-colors flex-shrink-0 ml-4">
+                <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition-colors flex-shrink-0">
                   Request
                 </button>
               </div>

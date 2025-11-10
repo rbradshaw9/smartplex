@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 interface ChatMessage {
+  id: string
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
@@ -18,6 +19,7 @@ const SUGGESTED_PROMPTS = [
 export function ChatPanel() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
+      id: 'welcome-' + Date.now(),
       role: 'assistant',
       content: 'Hello! I\'m your SmartPlex AI assistant. I can help you discover new content, analyze your viewing habits, or answer questions about your media library. What would you like to know?',
       timestamp: new Date(),
@@ -26,6 +28,12 @@ export function ChatPanel() {
   const [inputMessage, setInputMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(true)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
   const handleSendMessage = async (message?: string) => {
     const messageToSend = message || inputMessage
@@ -34,6 +42,7 @@ export function ChatPanel() {
     setShowSuggestions(false)
 
     const userMessage: ChatMessage = {
+      id: 'user-' + Date.now(),
       role: 'user',
       content: messageToSend,
       timestamp: new Date(),
@@ -86,6 +95,7 @@ export function ChatPanel() {
       console.log('✅ Chat response data:', data)
       
       const assistantMessage: ChatMessage = {
+        id: 'assistant-' + Date.now(),
         role: 'assistant',
         content: data.response || 'I apologize, but I couldn\'t generate a response.',
         timestamp: new Date(),
@@ -100,6 +110,7 @@ export function ChatPanel() {
     } catch (error) {
       console.error('❌ Chat error:', error)
       const errorMessage: ChatMessage = {
+        id: 'error-' + Date.now(),
         role: 'assistant',
         content: 'Sorry, I encountered an error connecting to the AI service. Please try again later.',
         timestamp: new Date(),
@@ -116,14 +127,14 @@ export function ChatPanel() {
       
       {/* Messages */}
       <div className="flex-1 overflow-y-auto space-y-4 mb-4">
-        {messages.map((message, index) => (
-          <div key={index} className={`${message.role === 'user' ? 'text-right' : 'text-left'}`}>
+        {messages.map((message) => (
+          <div key={message.id} className={`${message.role === 'user' ? 'text-right' : 'text-left'}`}>
             <div className={`inline-block p-3 rounded-lg max-w-xs ${
               message.role === 'user' 
                 ? 'bg-blue-600 text-white' 
                 : 'bg-slate-700 text-slate-200'
             }`}>
-              <p className="text-sm">{message.content}</p>
+              <p className="text-sm whitespace-pre-wrap">{message.content}</p>
             </div>
             <div className="text-xs text-slate-400 mt-1">
               {message.timestamp.toLocaleTimeString()}
@@ -145,6 +156,7 @@ export function ChatPanel() {
             </div>
           </div>
         )}
+        <div ref={messagesEndRef} />
       </div>
       
       {/* Suggested prompts (show when chat is empty) */}
