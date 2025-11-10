@@ -56,18 +56,18 @@ Create a file with your integration details (keep this secure!):
     "enabled": true
   },
   "radarr": {
-    "url": "http://192.168.1.100:7878",
-    "api_key": "your-radarr-api-key-here",
+    "url": "https://goneexploring.myles.usbx.me/radarr/",
+    "api_key": "00cfaa889c7e4415bb853c0cd15e8aea",
     "enabled": true
   },
   "overseerr": {
-    "url": "http://192.168.1.100:5055",
-    "api_key": "your-overseerr-api-key-here",
+    "url": "https://overseerr-goneexploring.myles.usbx.me/",
+    "api_key": "MTcxNDQxMDE2OTMzMWI4ZTUzZmQ3LWZlOTMtNDQ2YS04MTRjLWFjOGUzOTg4MjJmYQ==",
     "enabled": true
   },
   "tautulli": {
-    "url": "http://192.168.1.100:8181",
-    "api_key": "your-tautulli-api-key-here",
+    "url": "https://goneexploring.myles.usbx.me/tautulli",
+    "api_key": "6acb68e71f224bd088fb757379498651",
     "enabled": true
   }
 }
