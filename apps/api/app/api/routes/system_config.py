@@ -91,7 +91,7 @@ async def update_storage_capacity(
         Updated configuration
     """
     # Check if user is admin
-    if not user.get('is_admin'):
+    if user.get('role') != 'admin':
         raise HTTPException(status_code=403, detail="Admin access required")
     
     try:
@@ -144,7 +144,7 @@ async def get_all_config(
         Dictionary of all system configuration keys and values
     """
     # Check if user is admin
-    if not user.get('is_admin'):
+    if user.get('role') != 'admin':
         raise HTTPException(status_code=403, detail="Admin access required")
     
     try:
