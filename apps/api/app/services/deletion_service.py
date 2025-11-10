@@ -99,6 +99,9 @@ class DeletionService:
             plex_added_at = metadata.get('plex_added_at') if isinstance(metadata, dict) else None
             
             if plex_added_at:
+                # Plex timestamps might not have timezone info - add UTC if missing
+                if 'Z' not in plex_added_at and '+' not in plex_added_at:
+                    plex_added_at += '+00:00'
                 date_added = datetime.fromisoformat(plex_added_at.replace('Z', '+00:00'))
                 logger.info(f"📅 Using Plex addedAt for '{item['title']}': {plex_added_at}")
             elif item.get('added_at'):
