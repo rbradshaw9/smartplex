@@ -118,9 +118,13 @@ export function ChatPanel() {
         {isLoading && (
           <div className="text-left">
             <div className="inline-block p-3 rounded-lg bg-slate-700 text-slate-200">
-              <div className="flex items-center space-x-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
-                <span className="text-sm">AI is thinking...</span>
+              <div className="flex items-center space-x-3">
+                <div className="flex space-x-1">
+                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                </div>
+                <span className="text-sm text-slate-400">AI is thinking...</span>
               </div>
             </div>
           </div>

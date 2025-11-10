@@ -257,7 +257,9 @@ class DeletionService:
                     
                     pass
                 
-                item_result['status'] = 'completed' if not dry_run else 'dry_run'
+                # Set status based on whether this was a dry run or actual deletion
+                # Valid statuses: 'pending', 'completed', 'failed', 'skipped'
+                item_result['status'] = 'completed' if not dry_run else 'skipped'
                 results['deleted'] += 1
                 results['total_size_mb'] += candidate.get('file_size_mb', 0) or 0
                 
