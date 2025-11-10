@@ -497,6 +497,166 @@ GET /health
 
 ---
 
+## 🤖 Phase 5: AI Intelligence & Analytics (3-4 hours)
+**Advanced AI features and self-learning system**
+
+### 27. Add Admin AI Chat with Cross-User Analytics
+**Problem**: Admin has no way to ask questions about server-wide trends, user activity, or content analytics.
+
+**Solution**: Dedicated admin AI endpoint with aggregate data access
+- Create `/api/ai/admin/chat` endpoint (admin-only)
+- Build admin-specific context with cross-user data:
+  - "Which users are most active?"
+  - "What content is most popular server-wide?"
+  - "Whose requests get watched the most by others?"
+  - "What genres are trending?"
+  - "Which users haven't logged in recently?"
+  - "What's the request approval time average?"
+- Implement privacy-safe aggregations (no PII, Netflix-style analytics)
+- Add "Trending," "Popular," "Top 10" across all users
+
+**Database changes** (add to migration 006):
+```sql
+-- Track user login activity for "Who hasn't logged in?"
+ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE users ADD COLUMN login_count INTEGER DEFAULT 0;
+
+-- Track WHO requested content (for social analytics)
+ALTER TABLE content_requests ADD COLUMN requested_by_user_id UUID REFERENCES users(id);
+
+-- Track if a watch came from someone else's request (social credit)
+ALTER TABLE user_stats ADD COLUMN attributed_to_request_id UUID REFERENCES content_requests(id);
+
+-- Storage analytics for "What's using the most space?"
+ALTER TABLE media_items ADD COLUMN file_size_bytes BIGINT;
+```
+
+**Files to modify**:
+- `apps/api/app/api/routes/ai.py` (add admin endpoints)
+- `apps/api/app/core/ai.py` (add admin context builder)
+- `packages/db/migrations/006_webhook_tenant_isolation.sql` (add columns)
+
+**Impact**: Admin can analyze trends, user behavior, content performance - critical for growth decisions
+
+---
+
+### 28. Implement AI Self-Learning System
+**Problem**: AI doesn't know when it gives bad answers or lacks necessary data.
+
+**Solution**: AI confidence tracking and learning queue
+- AI self-assesses every response (confidence score 0.0-1.0)
+- Logs when it lacks data: "I need bandwidth usage to answer this"
+- Tracks which questions it struggles with
+- Admin dashboard shows AI learning queue
+- Priority-ranked list of missing features/data AI needs
+
+**Database changes** (add to migration 006):
+```sql
+-- Track AI response quality and confidence
+CREATE TABLE ai_conversation_feedback (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  chat_history_id UUID REFERENCES chat_history(id),
+  user_id UUID REFERENCES users(id),
+  user_message TEXT NOT NULL,
+  ai_response TEXT NOT NULL,
+  confidence_score DECIMAL(3,2), -- AI's self-assessment
+  data_sources_used JSONB, -- Which tables queried
+  missing_data JSONB, -- What data AI wanted but lacked
+  user_rating INTEGER, -- Optional 1-5 star feedback
+  question_type TEXT, -- 'analytics', 'recommendation', 'troubleshooting'
+  was_successful BOOLEAN,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Queue of things AI couldn't answer well
+CREATE TABLE ai_learning_queue (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  question TEXT NOT NULL,
+  question_type TEXT,
+  why_failed TEXT, -- 'missing_data', 'ambiguous', 'complex'
+  missing_tables TEXT[], -- What DB tables would help
+  suggested_solution TEXT, -- AI's suggestion
+  times_asked INTEGER DEFAULT 1, -- Popularity metric
+  priority INTEGER DEFAULT 1, -- 1-5
+  status TEXT DEFAULT 'pending', -- 'pending', 'resolved', 'wont_fix'
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+**Files to modify**:
+- `apps/api/app/core/ai.py` (add confidence wrapper)
+- `apps/api/app/api/routes/ai.py` (log feedback)
+- `apps/web/src/app/admin/ai-insights/page.tsx` (new - learning dashboard)
+
+**Impact**: AI improves over time, you know exactly what features users want
+
+---
+
+### 29. Add Server-Wide Analytics Endpoints
+**Problem**: No way to get trending/popular content across all users.
+
+**Solution**: Netflix-style aggregated analytics
+- `GET /api/analytics/trending` - Most watched in last 7 days
+- `GET /api/analytics/popular` - Highest rated across all users
+- `GET /api/analytics/top10` - Top 10 by play count
+- `GET /api/analytics/genre-stats` - Genre popularity breakdown
+- `GET /api/analytics/user-activity` - Active users chart (admin only)
+
+**Privacy protections**:
+- Never expose individual user viewing details
+- Only show aggregates: counts, averages, percentages
+- Use anonymized data ("User A recommended X, 12 people watched it")
+
+**Files to modify**:
+- `apps/api/app/api/routes/analytics.py` (new)
+- `apps/web/src/components/dashboard/trending-section.tsx` (new)
+- `apps/web/src/app/admin/analytics/page.tsx` (new)
+
+**Impact**: Users discover popular content, admins understand usage patterns
+
+---
+
+### 30. Enhance User AI with Social Context
+**Problem**: User AI only knows about their own watches, not what's popular.
+
+**Solution**: Blend personal + social recommendations
+- User asks "What should I watch?" 
+- AI considers:
+  1. Their watch history (personal)
+  2. What's trending server-wide (social)
+  3. What similar users liked (collaborative filtering)
+  4. Content requested by power users (social proof)
+- Show reasoning: "Trending on your server" vs "Based on your history"
+
+**Files to modify**:
+- `apps/api/app/core/ai.py` (enhance context builder)
+- `apps/api/app/api/routes/ai.py` (add social context queries)
+
+**Impact**: Better recommendations, community feel
+
+---
+
+### 31. Add AI Query Performance Tracking
+**Problem**: Don't know which AI queries are slow or expensive.
+
+**Solution**: Track AI performance metrics
+- Log every AI call: tokens used, latency, cost estimate
+- Dashboard showing:
+  - Most expensive queries
+  - Slowest responses
+  - Cost per user
+  - Total monthly AI spend estimate
+- Alert if cost spikes
+
+**Files to modify**:
+- `apps/api/app/core/ai.py` (add performance logging)
+- `apps/api/app/api/routes/admin/ai-metrics.py` (new)
+- `apps/web/src/app/admin/ai-costs/page.tsx` (new)
+
+**Impact**: Control AI costs, optimize expensive queries
+
+---
+
 ## 🎯 Absolute Minimum for MVP Launch
 
 **Must complete (7 items, ~8-10 hours)**:
@@ -507,6 +667,11 @@ GET /health
 5. ✅ Complete Plex webhook sync
 6. ✅ Add request button + modal
 7. ✅ Add background job scheduler
+
+**High-Value Add-Ons (Phase 5 - AI Intelligence)**:
+- Item 27: Admin AI Chat (2 hours) - Game-changer for multi-user servers
+- Item 28: AI Self-Learning (1.5 hours) - Unique competitive advantage
+- Item 29: Server-Wide Analytics (1 hour) - Netflix-style trending/popular
 
 **Everything else** can be post-launch improvements.
 
