@@ -4,7 +4,7 @@ Deletion Service for SmartPlex.
 Handles intelligent library cleanup with grace periods and inactivity tracking.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -60,8 +60,8 @@ class DeletionService:
         logger.info(f"Scanning for deletion candidates using rule: {rule['name']}")
         logger.info(f"Grace period: {rule['grace_period_days']} days, Inactivity: {rule['inactivity_threshold_days']} days")
         
-        # Calculate cutoff dates
-        now = datetime.utcnow()
+        # Calculate cutoff dates (use timezone-aware datetime)
+        now = datetime.now(timezone.utc)
         grace_cutoff = now - timedelta(days=rule['grace_period_days'])
         inactivity_cutoff = now - timedelta(days=rule['inactivity_threshold_days'])
         
@@ -263,7 +263,7 @@ class DeletionService:
         
         # Update rule last_run_at
         self.supabase.table("deletion_rules").update({
-            "last_run_at": datetime.utcnow().isoformat()
+            "last_run_at": datetime.now(timezone.utc).isoformat()
         }).eq("id", str(rule_id)).execute()
         
         logger.info(f"Deletion complete: {results['deleted']} deleted, {results['failed']} failed, {results['skipped']} skipped")
