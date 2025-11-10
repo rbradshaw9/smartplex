@@ -135,7 +135,7 @@ async def get_server_libraries(
 @router.get("/watch-history")
 async def get_watch_history(
     plex_token: str,
-    limit: int = 50,
+    limit: int = 10000,
     force_refresh: bool = False,
     user: Dict[str, Any] = Depends(get_current_user),
     supabase: Client = Depends(get_supabase_client)
@@ -151,7 +151,7 @@ async def get_watch_history(
     
     Args:
         plex_token: Plex authentication token
-        limit: Maximum number of items per category
+        limit: Maximum number of items per category (default 10000 for full library sync)
         force_refresh: Skip cache and force fresh data from Plex
     """
     try:

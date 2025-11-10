@@ -164,7 +164,7 @@ class DeletionService:
             # Convert file size from bytes to MB
             file_size_mb = None
             if item.get('file_size_bytes'):
-                file_size_mb = item['file_size_bytes'] / (1024 * 1024)
+                file_size_mb = round(item['file_size_bytes'] / (1024 * 1024))
             
             # Get rating from metadata if not in main fields
             rating = item.get('rating')

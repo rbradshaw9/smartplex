@@ -396,7 +396,7 @@ async def execute_deletion(
                 "deleted": results.get("deleted", 0),
                 "failed": results.get("failed", 0),
                 "skipped": results.get("skipped", 0),
-                "total_size_mb": float(results.get("total_size_mb", 0))
+                "total_size_mb": round(float(results.get("total_size_mb", 0)))
             }
         }
     except ValueError as e:

@@ -66,7 +66,7 @@ export function ChatPanel() {
           'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          message: inputMessage,
+          message: messageToSend,
           chat_history: messages.map(m => ({
             role: m.role,
             content: m.content,
