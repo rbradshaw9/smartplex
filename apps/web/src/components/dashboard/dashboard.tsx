@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import { useRouter } from 'next/navigation'
 import { User } from '@supabase/supabase-js'
 import { ChatPanel } from './chat-panel'
 import { WatchStats } from './watch-stats'
@@ -28,35 +27,11 @@ interface DashboardProps {
 }
 
 export function Dashboard({ user, userStats: initialStats, recommendations: initialRecommendations }: DashboardProps) {
-  const [loading, setLoading] = useState(false)
   const [userStats, setUserStats] = useState(initialStats)
   const [recommendations, setRecommendations] = useState(initialRecommendations)
   const [fetchingData, setFetchingData] = useState(true)
-  const [isAdmin, setIsAdmin] = useState(false)
-  const router = useRouter()
   // Create Supabase client only once to avoid SSR mismatch
   const [supabase] = useState(() => createClientComponentClient<Database>())
-
-  // Check if user is admin
-  useEffect(() => {
-    const checkAdminStatus = async () => {
-      try {
-        const { data } = await supabase
-          .from('users')
-          .select('role')
-          .eq('id', user.id)
-          .single()
-        
-        if (data?.role === 'admin') {
-          setIsAdmin(true)
-        }
-      } catch (error) {
-        console.error('Error checking admin status:', error)
-      }
-    }
-    
-    checkAdminStatus()
-  }, [user.id, supabase])
 
   // Fetch real Plex data on mount
   useEffect(() => {
@@ -165,58 +140,10 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
     fetchPlexData()
   }, [supabase])
 
-  const handleSignOut = async () => {
-    setLoading(true)
-    await supabase.auth.signOut()
-    router.push('/')
-    setLoading(false)
-  }
-
   return (
     <div className="min-h-screen bg-slate-900">
-      {/* Header */}
-      <header className="bg-slate-800 border-b border-slate-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <h1 className="text-2xl font-bold text-white">
-                Smart<span className="text-blue-400">Plex</span>
-              </h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              <div className="text-slate-300">
-                Welcome, {user.email}
-              </div>
-              {isAdmin && (
-                <>
-                  <button
-                    onClick={() => router.push('/admin/integrations')}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-                  >
-                    ⚙️ Integrations
-                  </button>
-                  <button
-                    onClick={() => router.push('/admin/deletion')}
-                    className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors"
-                  >
-                    🗑️ Cleanup
-                  </button>
-                </>
-              )}
-              <button
-                onClick={handleSignOut}
-                disabled={loading}
-                className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-colors"
-              >
-                {loading ? 'Signing out...' : 'Sign Out'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {fetchingData && (
           <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 mb-8">
             <div className="flex items-center space-x-3">
@@ -238,7 +165,7 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
             <ChatPanel />
           </div>
         </div>
-      </main>
+      </div>
     </div>
   )
 }
