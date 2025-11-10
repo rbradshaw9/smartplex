@@ -77,10 +77,10 @@ async def sync_library_generator(
                     'last_seen_at': datetime.now(timezone.utc).isoformat(),
                 }, on_conflict='user_id,machine_id').execute()
                 
-                if not server_record.data:
+                if not server_record.data:  # type: ignore
                     continue
                 
-                server_id = server_record.data[0]['id']
+                server_id = server_record.data[0]['id']  # type: ignore
                 
                 # Get library sections
                 sections = server.library.sections()

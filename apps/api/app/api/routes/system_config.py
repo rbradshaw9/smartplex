@@ -154,11 +154,11 @@ async def get_all_config(
         
         # Convert to dictionary keyed by config key
         config_dict = {}
-        for item in result.data:
-            config_dict[item['key']] = {
-                'value': item['value'],
-                'description': item.get('description'),
-                'updated_at': item.get('updated_at')
+        for item in result.data:  # type: ignore
+            config_dict[item['key']] = {  # type: ignore
+                'value': item['value'],  # type: ignore
+                'description': item.get('description'),  # type: ignore
+                'updated_at': item.get('updated_at')  # type: ignore
             }
         
         return config_dict
