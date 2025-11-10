@@ -94,9 +94,17 @@ class DeletionService:
         
         for item in media_response.data:
             # Check 1: Grace period - item must be old enough
-            date_added = datetime.fromisoformat(item['added_at'].replace('Z', '+00:00')) if item.get('added_at') else None
+            # Try to get Plex addedAt from metadata first, fall back to our added_at
+            metadata = item.get('metadata', {})
+            plex_added_at = metadata.get('plex_added_at') if isinstance(metadata, dict) else None
             
-            if not date_added:
+            if plex_added_at:
+                date_added = datetime.fromisoformat(plex_added_at.replace('Z', '+00:00'))
+                logger.info(f"📅 Using Plex addedAt for '{item['title']}': {plex_added_at}")
+            elif item.get('added_at'):
+                date_added = datetime.fromisoformat(item['added_at'].replace('Z', '+00:00'))
+                logger.warning(f"⚠️ Using database added_at for '{item['title']}' (Plex date not available)")
+            else:
                 logger.info(f"❌ Skipping '{item['title']}': no date_added")
                 continue
             

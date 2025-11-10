@@ -172,6 +172,7 @@ class PlexCache:
                                 'genres': item.get('genres', []),
                                 'rating': item.get('rating'),
                                 'content_rating': item.get('content_rating'),
+                                'plex_added_at': item.get('plex_added_at'),  # Store Plex addedAt timestamp
                             }
                         }, on_conflict='server_id,plex_id')\
                         .execute()

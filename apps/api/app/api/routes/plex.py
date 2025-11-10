@@ -253,6 +253,7 @@ async def get_watch_history(
                                 "content_rating": getattr(item, 'contentRating', None),
                                 "duration": duration,
                                 "last_viewed_at": item.lastViewedAt.isoformat() if hasattr(item, 'lastViewedAt') and item.lastViewedAt else None,
+                                "plex_added_at": item.addedAt.isoformat() if hasattr(item, 'addedAt') and item.addedAt else None,
                                 "view_count": view_count,
                                 "user_rating": user_rating,
                                 "thumb": getattr(item, 'thumb', None),
