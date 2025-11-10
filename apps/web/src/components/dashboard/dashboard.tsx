@@ -45,11 +45,11 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
         }
 
         // First, try to load cached data from Supabase
-        const { data: cachedStats } = await supabase
+        const { data: cachedStats, error: statsError } = await supabase
           .from('user_stats_cache')
           .select('*')
           .eq('user_id', user.id)
-          .single()
+          .maybeSingle()
 
         const { data: cachedHistory } = await supabase
           .from('watch_history_cache')
@@ -58,11 +58,11 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
           .order('last_viewed_at', { ascending: false })
           .limit(10)
 
-        const { data: cachedRecs } = await supabase
+        const { data: cachedRecs, error: recsError } = await supabase
           .from('recommendations_cache')
           .select('*')
           .eq('user_id', user.id)
-          .single()
+          .maybeSingle()
 
         // If we have recent cache (< 1 hour old), use it immediately
         const cacheAge = cachedStats?.last_updated_at 

@@ -33,11 +33,21 @@ export function ChatPanel() {
     setIsLoading(true)
 
     try {
+      // Get auth token from Supabase
+      const { createClientComponentClient } = await import('@supabase/auth-helpers-nextjs')
+      const supabase = createClientComponentClient()
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (!session) {
+        throw new Error('Not authenticated')
+      }
+
       // Call the real AI chat API
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/ai/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           message: inputMessage,
