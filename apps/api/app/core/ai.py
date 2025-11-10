@@ -198,19 +198,30 @@ Be conversational, helpful, and concise. Reference specific titles when relevant
         # Add context about user's library and preferences
         context_additions = []
         
-        if user_context.get("favorite_genre"):
-            context_additions.append(f"User's favorite genre: {user_context['favorite_genre']}")
+        # Favorite genres (plural key from ai.py)
+        favorite_genres = user_context.get("favorite_genres", [])
+        if favorite_genres:
+            context_additions.append(f"User's favorite genres: {', '.join(favorite_genres)}")
         
-        if user_context.get("total_watched"):
-            context_additions.append(f"Total items watched: {user_context['total_watched']}")
+        # Total items watched
+        total_watched = user_context.get("total_items_watched", 0)
+        total_watch_count = user_context.get("total_watch_count", 0)
+        if total_watched:
+            context_additions.append(f"Library stats: {total_watched} titles watched with {total_watch_count} total views")
         
-        if user_context.get("recently_watched"):
-            recent = user_context["recently_watched"][:5]
-            titles = [item.get("title") for item in recent]
-            context_additions.append(f"Recently watched: {', '.join(titles)}")
+        # Recently watched (plural key from ai.py)
+        recent_watches = user_context.get("recent_watches", [])
+        if recent_watches:
+            recent_titles = [f"{item.get('title')} ({item.get('type', 'unknown')})" for item in recent_watches[:5]]
+            context_additions.append(f"Recently watched: {', '.join(recent_titles)}")
+        
+        # Viewing summary
+        viewing_summary = user_context.get("viewing_summary")
+        if viewing_summary:
+            context_additions.append(f"Summary: {viewing_summary}")
         
         if context_additions:
-            return f"{base_prompt}\n\nCurrent user context:\n" + "\n".join(f"- {c}" for c in context_additions)
+            return f"{base_prompt}\n\n🎬 USER'S LIBRARY ACCESS:\n" + "\n".join(f"- {c}" for c in context_additions) + "\n\nYou have FULL access to this user's watch history and library. Use it to give personalized, specific recommendations!"
         
         return base_prompt
     
