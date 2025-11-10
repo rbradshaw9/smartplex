@@ -188,6 +188,56 @@ CREATE TABLE agent_heartbeats (
   CONSTRAINT agent_heartbeats_agent_id_check CHECK (char_length(agent_id) >= 1)
 );
 
+-- Notifications table (in-app and external notifications)
+CREATE TABLE notifications (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type TEXT NOT NULL, -- 'storage_alert', 'cleanup_complete', 'sync_error', 'recommendation', etc.
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  severity TEXT NOT NULL DEFAULT 'info', -- 'info', 'warning', 'error', 'success'
+  read BOOLEAN NOT NULL DEFAULT FALSE,
+  data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  read_at TIMESTAMP WITH TIME ZONE,
+  
+  CONSTRAINT notifications_type_check CHECK (char_length(type) >= 1),
+  CONSTRAINT notifications_title_check CHECK (char_length(title) >= 1),
+  CONSTRAINT notifications_message_check CHECK (char_length(message) >= 1),
+  CONSTRAINT notifications_severity_check CHECK (severity IN ('info', 'warning', 'error', 'success'))
+);
+
+-- System settings table (global configuration)
+CREATE TABLE system_settings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  key TEXT NOT NULL UNIQUE,
+  value JSONB NOT NULL,
+  description TEXT,
+  category TEXT NOT NULL, -- 'cache', 'cleanup', 'ai', 'notifications', 'integrations'
+  is_secret BOOLEAN NOT NULL DEFAULT FALSE, -- whether value should be masked in UI
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  
+  CONSTRAINT system_settings_key_check CHECK (char_length(key) >= 1),
+  CONSTRAINT system_settings_category_check CHECK (char_length(category) >= 1)
+);
+
+-- Audit log table (track admin actions)
+CREATE TABLE audit_log (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  action TEXT NOT NULL, -- 'create', 'update', 'delete', 'login', 'execute_cleanup', etc.
+  resource_type TEXT NOT NULL, -- 'integration', 'user', 'server', 'media_item', 'setting', etc.
+  resource_id TEXT,
+  changes JSONB DEFAULT '{}'::jsonb, -- before/after values
+  ip_address TEXT,
+  user_agent TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  CONSTRAINT audit_log_action_check CHECK (char_length(action) >= 1),
+  CONSTRAINT audit_log_resource_type_check CHECK (char_length(resource_type) >= 1)
+);
+
 -- Indexes for performance
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_plex_user_id ON users(plex_user_id);
@@ -228,6 +278,19 @@ CREATE INDEX idx_chat_history_created_at ON chat_history(created_at);
 CREATE INDEX idx_agent_heartbeats_agent_id ON agent_heartbeats(agent_id);
 CREATE INDEX idx_agent_heartbeats_last_heartbeat ON agent_heartbeats(last_heartbeat);
 
+CREATE INDEX idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX idx_notifications_read ON notifications(read);
+CREATE INDEX idx_notifications_created_at ON notifications(created_at);
+CREATE INDEX idx_notifications_type ON notifications(type);
+
+CREATE INDEX idx_system_settings_key ON system_settings(key);
+CREATE INDEX idx_system_settings_category ON system_settings(category);
+
+CREATE INDEX idx_audit_log_user_id ON audit_log(user_id);
+CREATE INDEX idx_audit_log_action ON audit_log(action);
+CREATE INDEX idx_audit_log_resource_type ON audit_log(resource_type);
+CREATE INDEX idx_audit_log_created_at ON audit_log(created_at);
+
 -- Update triggers for timestamp fields
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -242,3 +305,4 @@ CREATE TRIGGER update_servers_updated_at BEFORE UPDATE ON servers FOR EACH ROW E
 CREATE TRIGGER update_integrations_updated_at BEFORE UPDATE ON integrations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_media_items_updated_at BEFORE UPDATE ON media_items FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_user_stats_updated_at BEFORE UPDATE ON user_stats FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_system_settings_updated_at BEFORE UPDATE ON system_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

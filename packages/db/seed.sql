@@ -1,12 +1,19 @@
 -- Sample data for SmartPlex development and testing
 -- This file provides realistic test data for local development
 
+-- IMPORTANT: Default admin user
+-- Email: rbradshaw@gmail.com
+-- Password: MiR43Tx2-
+-- This user must be created in Supabase Auth first, then this seed will add the role
+
 -- Sample users (passwords would be handled by Supabase Auth)
 INSERT INTO users (id, email, display_name, role, plex_username, preferences) VALUES
+  ('00000000-0000-0000-0000-000000000001', 'rbradshaw@gmail.com', 'Ryan Bradshaw', 'admin', 'rbradshaw', '{"theme": "dark", "notifications": {"email": true, "push": true, "storage_alerts": true, "cleanup_reports": true}}'),
   ('550e8400-e29b-41d4-a716-446655440000', 'admin@smartplex.dev', 'SmartPlex Admin', 'admin', 'admin_user', '{"theme": "dark", "notifications": true}'),
   ('550e8400-e29b-41d4-a716-446655440001', 'john@example.com', 'John Doe', 'user', 'john_plex', '{"theme": "light", "autoplay": true}'),
   ('550e8400-e29b-41d4-a716-446655440002', 'jane@example.com', 'Jane Smith', 'user', 'jane_plex', '{"theme": "dark", "language": "en"}'),
-  ('550e8400-e29b-41d4-a716-446655440003', 'moderator@smartplex.dev', 'Mod User', 'moderator', 'mod_user', '{"notifications": true}');
+  ('550e8400-e29b-41d4-a716-446655440003', 'moderator@smartplex.dev', 'Mod User', 'moderator', 'mod_user', '{"notifications": true}')
+ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role;
 
 -- Sample Plex servers
 INSERT INTO servers (id, user_id, name, url, machine_id, platform, version, status) VALUES
@@ -62,6 +69,37 @@ INSERT INTO agent_heartbeats (agent_id, server_id, status, system_metrics, last_
   ('agent-main-server', '660e8400-e29b-41d4-a716-446655440000', 'healthy', '{"cpu": 15.2, "memory": 68.5, "disk": 78.3}', NOW() - INTERVAL '2 minutes'),
   ('agent-home-server', '660e8400-e29b-41d4-a716-446655440001', 'healthy', '{"cpu": 8.7, "memory": 45.2, "disk": 85.1}', NOW() - INTERVAL '1 minute'),
   ('agent-backup-server', '660e8400-e29b-41d4-a716-446655440002', 'offline', '{}', NOW() - INTERVAL '2 hours');
+
+-- Insert default system settings
+INSERT INTO system_settings (key, value, description, category, is_secret) VALUES
+  ('cache.watch_history_ttl_seconds', '900', 'Watch history cache TTL (15 minutes)', 'cache', FALSE),
+  ('cache.full_sync_ttl_seconds', '21600', 'Full library sync TTL (6 hours)', 'cache', FALSE),
+  ('cache.max_size_mb', '500', 'Maximum cache size in megabytes', 'cache', FALSE),
+  ('cleanup.enabled', 'false', 'Enable automated cleanup operations', 'cleanup', FALSE),
+  ('cleanup.dry_run', 'true', 'Test mode - no actual deletion', 'cleanup', FALSE),
+  ('cleanup.min_age_days', '90', 'Minimum age for cleanup candidates', 'cleanup', FALSE),
+  ('cleanup.min_size_mb', '100', 'Minimum file size for cleanup', 'cleanup', FALSE),
+  ('cleanup.schedule', '"0 2 * * *"', 'Cron schedule for cleanup (2 AM daily)', 'cleanup', FALSE),
+  ('cleanup.storage_warning_threshold', '85', 'Storage warning threshold (%)', 'cleanup', FALSE),
+  ('cleanup.storage_critical_threshold', '95', 'Storage critical threshold (%)', 'cleanup', FALSE),
+  ('ai.provider', '"openai"', 'AI provider (openai, anthropic, local)', 'ai', FALSE),
+  ('ai.model', '"gpt-4o-mini"', 'AI model to use', 'ai', FALSE),
+  ('ai.temperature', '0.7', 'AI temperature (0-1)', 'ai', FALSE),
+  ('ai.max_tokens', '500', 'Maximum tokens per AI response', 'ai', FALSE),
+  ('notifications.email_enabled', 'true', 'Enable email notifications', 'notifications', FALSE),
+  ('notifications.discord_webhook', '""', 'Discord webhook URL', 'notifications', TRUE),
+  ('notifications.slack_webhook', '""', 'Slack webhook URL', 'notifications', TRUE),
+  ('integrations.sync_interval_hours', '6', 'Hours between integration syncs', 'integrations', FALSE),
+  ('integrations.timeout_seconds', '30', 'API request timeout', 'integrations', FALSE)
+ON CONFLICT (key) DO NOTHING;
+
+-- Insert welcome notification for admin user
+INSERT INTO notifications (user_id, type, title, message, severity, data) VALUES
+  ('00000000-0000-0000-0000-000000000001', 'system', 'Welcome to SmartPlex!', 'Your admin account has been created. Start by connecting your Plex server and configuring integrations in the Admin section.', 'success', '{"action": "setup", "url": "/admin/integrations"}'::jsonb);
+
+-- Insert audit log for seed operation
+INSERT INTO audit_log (user_id, action, resource_type, resource_id, changes) VALUES
+  ('00000000-0000-0000-0000-000000000001', 'seed', 'system', 'database', '{"operation": "initial_seed", "admin_user_created": true}'::jsonb);
 
 -- Update last_active_at for users to simulate recent activity
 UPDATE users SET last_active_at = NOW() - (random() * INTERVAL '7 days') WHERE role != 'guest';
