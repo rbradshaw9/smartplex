@@ -45,9 +45,18 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
           return
         }
 
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL
+        if (!apiUrl) {
+          console.error('NEXT_PUBLIC_API_URL is not set')
+          setFetchingData(false)
+          return
+        }
+
+        console.log('Fetching Plex data from:', apiUrl)
+
         // Fetch watch history and stats
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/plex/watch-history?plex_token=${plexToken}&limit=50`,
+          `${apiUrl}/api/plex/watch-history?plex_token=${plexToken}&limit=50`,
           {
             headers: {
               'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
@@ -55,8 +64,10 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
           }
         )
 
+        console.log('Plex watch history response:', response.status, response.statusText)
+
         if (!response.ok) {
-          throw new Error('Failed to fetch Plex data')
+          throw new Error(`Failed to fetch Plex data: ${response.status} ${response.statusText}`)
         }
 
         const data = await response.json()
@@ -101,7 +112,7 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
         // Fetch AI recommendations
         try {
           const recsResponse = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL}/ai/recommendations`,
+            `${apiUrl}/ai/recommendations`,
             {
               method: 'POST',
               headers: {
@@ -114,6 +125,8 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
               }),
             }
           )
+          
+          console.log('AI recommendations response:', recsResponse.status, recsResponse.statusText)
           
           if (recsResponse.ok) {
             const recsData = await recsResponse.json()

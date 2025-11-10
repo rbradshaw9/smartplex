@@ -63,8 +63,15 @@ export default function IntegrationsPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return
 
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL
+      if (!apiUrl) {
+        console.error('NEXT_PUBLIC_API_URL is not set')
+        setLoading(false)
+        return
+      }
+
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/integrations`,
+        `${apiUrl}/api/integrations`,
         {
           headers: {
             'Authorization': `Bearer ${session.access_token}`
@@ -75,6 +82,8 @@ export default function IntegrationsPage() {
       if (response.ok) {
         const data = await response.json()
         setIntegrations(data)
+      } else {
+        console.error('Failed to load integrations:', response.status, response.statusText)
       }
     } catch (err) {
       console.error('Error loading integrations:', err)
@@ -91,8 +100,17 @@ export default function IntegrationsPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return
 
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL
+      if (!apiUrl) {
+        setError('API URL not configured. Please set NEXT_PUBLIC_API_URL in Vercel environment variables.')
+        console.error('NEXT_PUBLIC_API_URL is not set')
+        return
+      }
+
+      console.log('Creating integration:', formData.service, 'at', apiUrl)
+
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/integrations`,
+        `${apiUrl}/api/integrations`,
         {
           method: 'POST',
           headers: {
@@ -103,17 +121,20 @@ export default function IntegrationsPage() {
         }
       )
 
+      console.log('Integration create response:', response.status, response.statusText)
+
       if (response.ok) {
         setShowAddForm(false)
         setFormData({ service: 'tautulli', name: '', url: '', api_key: '' })
         loadIntegrations()
       } else {
         const error = await response.json()
-        setError(error.detail || 'Failed to create integration')
+        console.error('Integration create error:', error)
+        setError(error.detail || `Failed to create integration: ${response.status}`)
       }
     } catch (err) {
-      setError('Failed to create integration')
-      console.error(err)
+      console.error('Integration creation exception:', err)
+      setError(`Failed to create integration: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
