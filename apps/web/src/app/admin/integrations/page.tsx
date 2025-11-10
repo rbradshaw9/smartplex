@@ -75,9 +75,16 @@ export default function IntegrationsPage() {
       console.log('  process.env.NEXT_PUBLIC_API_URL =', apiUrl)
       console.log('  Full URL being requested =', fullUrl)
       console.log('  Protocol check:', fullUrl.startsWith('https://') ? '✅ HTTPS' : '❌ HTTP')
+      console.log('  typeof fullUrl:', typeof fullUrl)
+      console.log('  fullUrl.length:', fullUrl.length)
+      console.log('  fullUrl charCodes:', Array.from(fullUrl.substring(0, 10)).map(c => c.charCodeAt(0)))
+
+      // FORCE HTTPS - if this doesn't work, something is seriously wrong
+      const forcedHttpsUrl = fullUrl.replace('http://', 'https://')
+      console.log('  FORCED HTTPS URL:', forcedHttpsUrl)
 
       const response = await fetch(
-        fullUrl,
+        forcedHttpsUrl,
         {
           headers: {
             'Authorization': `Bearer ${session.access_token}`
@@ -120,8 +127,12 @@ export default function IntegrationsPage() {
       console.log('  Protocol check:', fullUrl.startsWith('https://') ? '✅ HTTPS' : '❌ HTTP')
       console.log('  Service:', formData.service)
 
+      // FORCE HTTPS - if this doesn't work, something is seriously wrong
+      const forcedHttpsUrl = fullUrl.replace('http://', 'https://')
+      console.log('  FORCED HTTPS URL:', forcedHttpsUrl)
+
       const response = await fetch(
-        fullUrl,
+        forcedHttpsUrl,
         {
           method: 'POST',
           headers: {
