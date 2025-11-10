@@ -220,8 +220,31 @@ export default function DeletionManagementPage() {
   }
 
   async function executeDeletion(ruleId: string, dryRun: boolean = false) {
-    if (!dryRun && !confirm('⚠️ WARNING: This will permanently delete files from your library!\n\nAre you absolutely sure you want to continue?')) {
-      return
+    if (!dryRun) {
+      if (!scanResults || scanResults.candidates.length === 0) {
+        return
+      }
+      
+      const totalSize = scanResults.candidates.reduce((sum, c) => sum + (c.file_size_mb || 0), 0) / 1024
+      
+      const confirmMessage = `🚨 PERMANENT DELETION WARNING 🚨
+
+This action is IRREVERSIBLE and will:
+• Delete ${scanResults.candidates.length} file(s) from Plex library
+• Remove ${totalSize.toFixed(2)} GB of content permanently
+• Remove from Sonarr/Radarr (prevent re-download)
+• Clear Overseerr requests
+
+Files will be DELETED from your server storage.
+This CANNOT be undone.
+
+Type "DELETE" below to confirm:`
+      
+      const userInput = prompt(confirmMessage)
+      if (userInput !== 'DELETE') {
+        alert('Deletion cancelled. (You must type DELETE in all caps to confirm)')
+        return
+      }
     }
 
     setExecuting(true)
@@ -527,8 +550,30 @@ export default function DeletionManagementPage() {
       return
     }
 
-    if (!dryRun && !confirm(`⚠️ WARNING: This will permanently delete ${selectedCandidates.size} file(s) from your library!\n\nAre you absolutely sure?`)) {
-      return
+    if (!dryRun) {
+      // Calculate total size of selected items
+      const selectedSize = getFilteredAndSortedCandidates()
+        .filter(c => selectedCandidates.has(c.id))
+        .reduce((sum, c) => sum + (c.file_size_mb || 0), 0) / 1024
+      
+      const confirmMessage = `🚨 PERMANENT DELETION WARNING 🚨
+
+This action is IRREVERSIBLE and will:
+• Delete ${selectedCandidates.size} file(s) from Plex library
+• Remove ${selectedSize.toFixed(2)} GB of content permanently
+• Remove from Sonarr/Radarr (prevent re-download)
+• Clear Overseerr requests
+
+Files will be DELETED from your server storage.
+This CANNOT be undone.
+
+Type "DELETE" below to confirm:`
+      
+      const userInput = prompt(confirmMessage)
+      if (userInput !== 'DELETE') {
+        alert('Deletion cancelled. (You must type DELETE in all caps to confirm)')
+        return
+      }
     }
 
     setExecuting(true)

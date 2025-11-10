@@ -270,10 +270,20 @@ class CascadeDeletionService:
                 # Delete it
                 item.delete()
                 
+                # Also delete from our database to prevent re-scanning
+                try:
+                    self.supabase.table("media_items")\
+                        .delete()\
+                        .eq("id", media_item['id'])\
+                        .execute()
+                    logger.info(f"✅ Deleted database record for '{media_item['title']}'")
+                except Exception as db_error:
+                    logger.warning(f"Failed to delete database record (non-fatal): {db_error}")
+                
                 logger.info(f"✅ Successfully deleted '{media_item['title']}' from Plex")
                 return {
                     "success": True,
-                    "message": f"Deleted from Plex library"
+                    "message": f"Deleted from Plex library and database"
                 }
                 
             except Exception as item_error:
