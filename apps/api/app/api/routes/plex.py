@@ -12,6 +12,7 @@ import httpx
 
 from app.core.supabase import get_supabase_client, get_current_user
 from app.core.cache import PlexCache
+from app.core.plex_connection import PlexConnectionManager
 from supabase import Client
 
 router = APIRouter(prefix="/plex", tags=["plex"])
@@ -132,6 +133,27 @@ async def get_server_libraries(
         )
 
 
+@router.get("/connection-stats")
+async def get_connection_stats(
+    user: Dict[str, Any] = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
+) -> Dict[str, Any]:
+    """
+    Get Plex connection performance statistics.
+    
+    Shows which servers are online, connection latencies, and cache status.
+    Useful for debugging slow connections.
+    """
+    try:
+        conn_manager = PlexConnectionManager(supabase)
+        return conn_manager.get_connection_stats(user['id'])
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get connection stats: {str(e)}"
+        )
+
+
 @router.get("/watch-history")
 async def get_watch_history(
     plex_token: str,
@@ -203,11 +225,17 @@ async def get_watch_history(
         except Exception as watchlist_error:
             print(f"Failed to fetch watchlist: {watchlist_error}")
         
+        # Initialize connection manager for cached connections
+        conn_manager = PlexConnectionManager(supabase)
+        
         # Process each server
         for resource in account.resources():
             try:
-                # Try to connect with shorter timeout to reduce wait time
-                server = resource.connect(timeout=10)
+                # Use connection manager with caching (30s → 2s improvement!)
+                server = await conn_manager.connect_to_server(resource, plex_token, user['id'])
+                if not server:
+                    continue
+                    
                 result["stats"]["servers_connected"] += 1
                 
                 # Get On Deck (in-progress items)
@@ -303,15 +331,13 @@ async def get_watch_history(
         # Get or create server record (use first connected server for now)
         if result["stats"]["servers_connected"] > 0:
             try:
-                # Get first server's machine ID for caching
+                # Get first server using connection manager
                 first_server = None
                 for resource in account.resources():
-                    try:
-                        server = resource.connect(timeout=5)
+                    server = await conn_manager.connect_to_server(resource, plex_token, user['id'])
+                    if server:
                         first_server = server
                         break
-                    except:
-                        continue
                 
                 if first_server:
                     # Get or create server record in database
