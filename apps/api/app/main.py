@@ -15,7 +15,10 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 
 from app.config import get_settings
 from app.api.routes import health, sync, ai, plex_auth, plex, integrations, admin_deletion
@@ -83,6 +86,20 @@ else:
     ])
 
 logger.info(f"🔒 CORS allowed origins: {allowed_origins}")
+
+
+# Middleware to trust proxy headers (for Railway HTTPS termination)
+class ProxyHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Trust X-Forwarded-Proto header from Railway's load balancer
+        forwarded_proto = request.headers.get("x-forwarded-proto", "")
+        if forwarded_proto == "https":
+            # Mark request as secure
+            request.scope["scheme"] = "https"
+        return await call_next(request)
+
+
+app.add_middleware(ProxyHeadersMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
