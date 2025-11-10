@@ -65,13 +65,19 @@ export default function IntegrationsPage() {
 
       const apiUrl = process.env.NEXT_PUBLIC_API_URL
       if (!apiUrl) {
-        console.error('NEXT_PUBLIC_API_URL is not set')
+        console.error('❌ NEXT_PUBLIC_API_URL is not set')
         setLoading(false)
         return
       }
 
+      const fullUrl = `${apiUrl}/api/integrations`
+      console.log('🔍 INTEGRATION PAGE DEBUG:')
+      console.log('  process.env.NEXT_PUBLIC_API_URL =', apiUrl)
+      console.log('  Full URL being requested =', fullUrl)
+      console.log('  Protocol check:', fullUrl.startsWith('https://') ? '✅ HTTPS' : '❌ HTTP')
+
       const response = await fetch(
-        `${apiUrl}/api/integrations`,
+        fullUrl,
         {
           headers: {
             'Authorization': `Bearer ${session.access_token}`
@@ -103,14 +109,19 @@ export default function IntegrationsPage() {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL
       if (!apiUrl) {
         setError('API URL not configured. Please set NEXT_PUBLIC_API_URL in Vercel environment variables.')
-        console.error('NEXT_PUBLIC_API_URL is not set')
+        console.error('❌ NEXT_PUBLIC_API_URL is not set')
         return
       }
 
-      console.log('Creating integration:', formData.service, 'at', apiUrl)
+      const fullUrl = `${apiUrl}/api/integrations`
+      console.log('🔍 CREATE INTEGRATION DEBUG:')
+      console.log('  process.env.NEXT_PUBLIC_API_URL =', apiUrl)
+      console.log('  Full URL being requested =', fullUrl)
+      console.log('  Protocol check:', fullUrl.startsWith('https://') ? '✅ HTTPS' : '❌ HTTP')
+      console.log('  Service:', formData.service)
 
       const response = await fetch(
-        `${apiUrl}/api/integrations`,
+        fullUrl,
         {
           method: 'POST',
           headers: {
