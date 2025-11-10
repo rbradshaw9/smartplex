@@ -49,7 +49,8 @@ export default function DeletionManagementPage() {
   const [scanning, setScanning] = useState(false)
   const [executing, setExecuting] = useState(false)
   const [syncing, setSyncing] = useState(false)
-  const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0, eta: '' })
+  const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0, eta: '', title: '', section: '', itemsPerSecond: 0 })
+  const [storageInfo, setStorageInfo] = useState<{ total_used_gb: number; total_used_tb: number } | null>(null)
   const [scanResults, setScanResults] = useState<ScanResults | null>(null)
   const [showRuleForm, setShowRuleForm] = useState(false)
   const [editingRule, setEditingRule] = useState<DeletionRule | null>(null)
@@ -69,8 +70,8 @@ export default function DeletionManagementPage() {
   })
 
   useEffect(() => {
-    // Run auth check and rules loading in parallel
-    Promise.all([checkAuth(), loadRules()])
+    // Run auth check, rules loading, and storage info in parallel
+    Promise.all([checkAuth(), loadRules(), loadStorageInfo()])
       .catch(err => console.error('Init error:', err))
   }, [])
 
@@ -268,7 +269,7 @@ export default function DeletionManagementPage() {
     setSyncing(true)
     setError('')
     setSuccessMessage('')
-    setSyncProgress({ current: 0, total: 0, eta: '' })
+    setSyncProgress({ current: 0, total: 0, eta: '', title: '', section: '', itemsPerSecond: 0 })
 
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -283,14 +284,98 @@ export default function DeletionManagementPage() {
         return
       }
 
-      const startTime = Date.now()
-      
-      // Show initial progress
-      setSyncProgress({ current: 0, total: 0, eta: 'Connecting to Plex...' })
+      // Connect to SSE endpoint for streaming progress
+      const eventSource = new EventSource(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/plex/sync-library-stream?plex_token=${plexToken}`
+      )
 
-      // Fetch watch history which will sync ALL items (remove limit to get entire library)
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          
+          if (data.status === 'connecting' || data.status === 'counting') {
+            setSyncProgress({ 
+              current: 0, 
+              total: 0, 
+              eta: data.message,
+              title: '',
+              section: '',
+              itemsPerSecond: 0
+            })
+          } else if (data.status === 'syncing') {
+            const etaMinutes = Math.floor(data.eta_seconds / 60)
+            const etaSeconds = data.eta_seconds % 60
+            const etaStr = etaMinutes > 0 
+              ? `${etaMinutes}m ${etaSeconds}s remaining`
+              : `${etaSeconds}s remaining`
+            
+            setSyncProgress({
+              current: data.current,
+              total: data.total,
+              eta: etaStr,
+              title: data.title || '',
+              section: data.section || '',
+              itemsPerSecond: data.items_per_second || 0
+            })
+          } else if (data.status === 'complete') {
+            setSyncProgress({
+              current: data.current,
+              total: data.total,
+              eta: `Completed in ${data.duration_seconds}s`,
+              title: '',
+              section: '',
+              itemsPerSecond: 0
+            })
+            setSuccessMessage(data.message)
+            
+            // Close connection
+            eventSource.close()
+            setSyncing(false)
+            
+            // Reload storage info
+            loadStorageInfo()
+            
+            // Clear message after 8 seconds
+            setTimeout(() => {
+              setSuccessMessage('')
+              setSyncProgress({ current: 0, total: 0, eta: '', title: '', section: '', itemsPerSecond: 0 })
+            }, 8000)
+          } else if (data.status === 'error') {
+            setError(data.message)
+            eventSource.close()
+            setSyncing(false)
+          } else if (data.status === 'warning') {
+            console.warn('Sync warning:', data.message)
+          }
+        } catch (parseError) {
+          console.error('Failed to parse SSE data:', parseError)
+        }
+      }
+
+      eventSource.onerror = (error) => {
+        console.error('SSE error:', error)
+        setError('Sync connection lost. Please try again.')
+        eventSource.close()
+        setSyncing(false)
+      }
+      
+    } catch (err) {
+      setError('Failed to start sync. Please try again.')
+      console.error(err)
+      setSyncing(false)
+    }
+  }
+
+  async function loadStorageInfo() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      const plexToken = localStorage.getItem('plex_token')
+      if (!plexToken) return
+
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/plex/watch-history?plex_token=${plexToken}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/plex/storage-info?plex_token=${plexToken}`,
         {
           headers: {
             'Authorization': `Bearer ${session.access_token}`,
@@ -300,33 +385,10 @@ export default function DeletionManagementPage() {
 
       if (response.ok) {
         const data = await response.json()
-        const syncedCount = data.watch_history?.length || 0
-        const totalItems = data.stats?.total_watched || syncedCount
-        
-        // Calculate elapsed time
-        const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000)
-        
-        // Show completion
-        setSyncProgress({ 
-          current: syncedCount, 
-          total: totalItems, 
-          eta: `Completed in ${elapsedSeconds}s` 
-        })
-        
-        setSuccessMessage(`✅ Successfully synced ${syncedCount} items from Plex with updated metadata! (Total in library: ${totalItems})`)
-        // Clear success message after 8 seconds (longer to read the message)
-        setTimeout(() => {
-          setSuccessMessage('')
-          setSyncProgress({ current: 0, total: 0, eta: '' })
-        }, 8000)
-      } else {
-        setError('Failed to sync library. Please try again.')
+        setStorageInfo(data)
       }
     } catch (err) {
-      setError('Failed to sync library. Please try again.')
-      console.error(err)
-    } finally {
-      setSyncing(false)
+      console.error('Failed to load storage info:', err)
     }
   }
 
@@ -434,7 +496,33 @@ export default function DeletionManagementPage() {
           </div>
         )}
 
-        {/* Sync Progress Indicator */}
+        {/* Storage Info Display */}
+        {storageInfo && (
+          <div className="bg-slate-800 rounded-lg p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold mb-1">💾 Library Storage</h3>
+                <p className="text-slate-400 text-sm">Total media stored across all servers</p>
+              </div>
+              <div className="text-right">
+                <div className="text-3xl font-bold text-purple-400">{storageInfo.total_used_tb.toFixed(2)} TB</div>
+                <div className="text-slate-400 text-sm">{storageInfo.total_used_gb.toFixed(0)} GB</div>
+              </div>
+            </div>
+            {scanResults && scanResults.candidates.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-slate-700">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-400">Space that could be freed:</span>
+                  <span className="text-green-400 font-semibold">
+                    {(scanResults.candidates.reduce((sum, c) => sum + (c.file_size_mb || 0), 0) / 1024).toFixed(2)} GB
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Sync Progress Indicator - Enhanced */}
         {syncing && syncProgress.current > 0 && (
           <div className="bg-purple-900/30 border border-purple-500/50 rounded-lg p-6 mb-6">
             <div className="flex items-center justify-between mb-3">
@@ -443,17 +531,33 @@ export default function DeletionManagementPage() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                 </svg>
-                <span className="text-purple-300 font-medium">
-                  Syncing Library: {syncProgress.current} / {syncProgress.total} items
-                </span>
+                <div className="flex flex-col">
+                  <span className="text-purple-300 font-medium">
+                    Syncing Library: {syncProgress.current.toLocaleString()} / {syncProgress.total.toLocaleString()} items
+                  </span>
+                  {syncProgress.title && (
+                    <span className="text-purple-400 text-sm">
+                      📺 {syncProgress.section}: {syncProgress.title}
+                    </span>
+                  )}
+                </div>
               </div>
-              <span className="text-purple-400 text-sm">{syncProgress.eta}</span>
+              <div className="text-right">
+                <div className="text-purple-400 text-sm font-medium">{syncProgress.eta}</div>
+                {syncProgress.itemsPerSecond > 0 && (
+                  <div className="text-purple-500 text-xs">⚡ {syncProgress.itemsPerSecond.toFixed(1)} items/sec</div>
+                )}
+              </div>
             </div>
             <div className="w-full bg-slate-700 rounded-full h-2.5">
               <div 
-                className="bg-purple-500 h-2.5 rounded-full transition-all duration-300"
+                className="bg-gradient-to-r from-purple-500 to-purple-400 h-2.5 rounded-full transition-all duration-300"
                 style={{ width: `${syncProgress.total > 0 ? (syncProgress.current / syncProgress.total) * 100 : 0}%` }}
               />
+            </div>
+            <div className="flex justify-between text-xs text-slate-500 mt-1">
+              <span>{((syncProgress.current / syncProgress.total) * 100).toFixed(1)}%</span>
+              <span>{syncProgress.total - syncProgress.current} remaining</span>
             </div>
           </div>
         )}
