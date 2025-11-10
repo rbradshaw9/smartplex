@@ -32,9 +32,31 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
   const [userStats, setUserStats] = useState(initialStats)
   const [recommendations, setRecommendations] = useState(initialRecommendations)
   const [fetchingData, setFetchingData] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(false)
   const router = useRouter()
   // Create Supabase client only once to avoid SSR mismatch
   const [supabase] = useState(() => createClientComponentClient<Database>())
+
+  // Check if user is admin
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      try {
+        const { data } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+        
+        if (data?.role === 'admin') {
+          setIsAdmin(true)
+        }
+      } catch (error) {
+        console.error('Error checking admin status:', error)
+      }
+    }
+    
+    checkAdminStatus()
+  }, [user.id, supabase])
 
   // Fetch real Plex data on mount
   useEffect(() => {
@@ -165,6 +187,22 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
               <div className="text-slate-300">
                 Welcome, {user.email}
               </div>
+              {isAdmin && (
+                <>
+                  <button
+                    onClick={() => router.push('/admin/integrations')}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+                  >
+                    ⚙️ Integrations
+                  </button>
+                  <button
+                    onClick={() => router.push('/admin/deletion')}
+                    className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors"
+                  >
+                    🗑️ Cleanup
+                  </button>
+                </>
+              )}
               <button
                 onClick={handleSignOut}
                 disabled={loading}

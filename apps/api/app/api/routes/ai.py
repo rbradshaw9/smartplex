@@ -233,8 +233,18 @@ async def analyze_viewing_patterns(
         )
 
 
+class RecommendationsRequest(BaseModel):
+    """Request for AI recommendations."""
+    user_id: Optional[str] = None
+    limit: int = Field(default=10, ge=1, le=50)
+    genre: Optional[str] = None
+    content_type: Optional[str] = None
+
+
 @router.get("/recommendations")
+@router.post("/recommendations")
 async def get_recommendations(
+    request: Optional[RecommendationsRequest] = None,
     limit: int = 10,
     genre: Optional[str] = None,
     content_type: Optional[str] = None,  # movie, series, or None for both
@@ -260,6 +270,12 @@ async def get_recommendations(
         List of content recommendations with reasoning
     """
     try:
+        # Use request body params if provided (POST), otherwise query params (GET)
+        if request:
+            limit = request.limit
+            genre = request.genre
+            content_type = request.content_type
+        
         # Initialize AI service
         ai_service = AIService(settings)
         
