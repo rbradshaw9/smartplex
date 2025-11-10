@@ -80,7 +80,12 @@ export function ChatPanel() {
         timestamp: new Date(),
       }
       
-      setMessages(prev => [...prev, assistantMessage])
+      console.log('💬 Adding assistant message to state:', assistantMessage)
+      setMessages(prev => {
+        const updated = [...prev, assistantMessage]
+        console.log('💬 Updated messages:', updated.length, 'total')
+        return updated
+      })
     } catch (error) {
       console.error('❌ Chat error:', error)
       const errorMessage: ChatMessage = {

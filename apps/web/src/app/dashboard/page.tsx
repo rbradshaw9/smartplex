@@ -46,8 +46,15 @@ export default function DashboardPage() {
         if (response.ok) {
           const data = await response.json()
           console.log('📊 Fetched recommendations:', data)
-          if (data.recommendations && Array.isArray(data.recommendations)) {
+          // API returns array directly, not wrapped in object
+          if (Array.isArray(data)) {
+            console.log('✅ Setting recommendations in page:', data)
+            setRecommendations(data)
+          } else if (data.recommendations && Array.isArray(data.recommendations)) {
+            console.log('✅ Setting recommendations in page (wrapped):', data.recommendations)
             setRecommendations(data.recommendations)
+          } else {
+            console.log('⚠️ Unexpected recommendations format:', data)
           }
         }
       } catch (error) {

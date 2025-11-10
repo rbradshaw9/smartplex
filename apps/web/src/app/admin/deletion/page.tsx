@@ -68,8 +68,9 @@ export default function DeletionManagementPage() {
   })
 
   useEffect(() => {
-    checkAuth()
-    loadRules()
+    // Run auth check and rules loading in parallel
+    Promise.all([checkAuth(), loadRules()])
+      .catch(err => console.error('Init error:', err))
   }, [])
 
   async function checkAuth() {
@@ -92,9 +93,14 @@ export default function DeletionManagementPage() {
   }
 
   async function loadRules() {
+    // Show loading immediately
+    setLoading(true)
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
+      if (!session) {
+        setLoading(false)
+        return
+      }
 
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/admin/deletion/rules`,
@@ -275,9 +281,9 @@ export default function DeletionManagementPage() {
         return
       }
 
-      // Fetch watch history which will sync media items with Plex data
+      // Fetch watch history which will sync ALL items (remove limit to get entire library)
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/plex/watch-history?plex_token=${plexToken}&limit=500`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/plex/watch-history?plex_token=${plexToken}`,
         {
           headers: {
             'Authorization': `Bearer ${session.access_token}`,
@@ -287,9 +293,11 @@ export default function DeletionManagementPage() {
 
       if (response.ok) {
         const data = await response.json()
-        setSuccessMessage(`✅ Successfully synced ${data.watch_history?.length || 0} items from Plex with updated metadata!`)
-        // Clear success message after 5 seconds
-        setTimeout(() => setSuccessMessage(''), 5000)
+        const syncedCount = data.watch_history?.length || 0
+        const totalItems = data.stats?.total_watched || syncedCount
+        setSuccessMessage(`✅ Successfully synced ${syncedCount} items from Plex with updated metadata! (Total in library: ${totalItems})`)
+        // Clear success message after 8 seconds (longer to read the message)
+        setTimeout(() => setSuccessMessage(''), 8000)
       } else {
         setError('Failed to sync library. Please try again.')
       }

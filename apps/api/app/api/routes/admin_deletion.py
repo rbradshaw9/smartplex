@@ -368,35 +368,48 @@ async def execute_deletion(
         )
         
         # Log audit trail
-        supabase.table("audit_log").insert({
-            "user_id": admin_user["id"],
-            "action": "execute_deletion" if not request.dry_run else "execute_deletion_dry_run",
-            "resource_type": "deletion_rule",
-            "resource_id": request.rule_id,
-            "changes": {
-                "results": results,
-                "dry_run": request.dry_run
-            }
-        }).execute()
+        try:
+            supabase.table("audit_log").insert({
+                "user_id": admin_user["id"],
+                "action": "execute_deletion" if not request.dry_run else "execute_deletion_dry_run",
+                "resource_type": "deletion_rule",
+                "resource_id": request.rule_id,
+                "changes": {
+                    "total_candidates": results.get("total_candidates", 0),
+                    "deleted": results.get("deleted", 0),
+                    "failed": results.get("failed", 0),
+                    "dry_run": request.dry_run
+                }
+            }).execute()
+        except Exception as audit_error:
+            logger.error(f"Failed to log audit trail (non-fatal): {audit_error}")
         
         action = "DRY RUN" if request.dry_run else "EXECUTED"
-        logger.warning(f"{action} deletion using rule {request.rule_id}: {results}")
+        logger.warning(f"{action} deletion using rule {request.rule_id}: deleted={results.get('deleted')}, failed={results.get('failed')}")
         
+        # Return simplified results to avoid serialization issues
         return {
             "rule_id": request.rule_id,
             "dry_run": request.dry_run,
-            "results": results
+            "results": {
+                "total_candidates": results.get("total_candidates", 0),
+                "deleted": results.get("deleted", 0),
+                "failed": results.get("failed", 0),
+                "skipped": results.get("skipped", 0),
+                "total_size_mb": float(results.get("total_size_mb", 0))
+            }
         }
     except ValueError as e:
+        logger.error(f"ValueError in execute_deletion: {e}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e)
         )
     except Exception as e:
-        logger.error(f"Failed to execute deletion: {e}")
+        logger.error(f"Failed to execute deletion: {type(e).__name__}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to execute deletion"
+            detail=f"Failed to execute deletion: {str(e)}"
         )
 
 
