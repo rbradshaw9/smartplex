@@ -45,13 +45,17 @@ class DeletionService:
         Returns:
             List of media items that match deletion criteria
         """
-        # Fetch the deletion rule
-        rule_response = self.supabase.table("deletion_rules").select("*").eq("id", str(rule_id)).single().execute()
-        
-        if not rule_response.data:
-            raise ValueError(f"Deletion rule {rule_id} not found")
-        
-        rule = rule_response.data
+        try:
+            # Fetch the deletion rule
+            rule_response = self.supabase.table("deletion_rules").select("*").eq("id", str(rule_id)).single().execute()
+            
+            if not rule_response.data:
+                raise ValueError(f"Deletion rule {rule_id} not found")
+            
+            rule = rule_response.data
+        except Exception as e:
+            logger.error(f"Failed to fetch deletion rule {rule_id}: {e}")
+            raise ValueError(f"Deletion rule {rule_id} not found or database error")
         
         logger.info(f"Scanning for deletion candidates using rule: {rule['name']}")
         logger.info(f"Grace period: {rule['grace_period_days']} days, Inactivity: {rule['inactivity_threshold_days']} days")
