@@ -197,6 +197,86 @@ CREATE INDEX IF NOT EXISTS idx_deletion_log_deleted_at ON deletion_log(deleted_a
 CREATE INDEX IF NOT EXISTS idx_deletion_log_deleted_by ON deletion_log(deleted_by);
 CREATE INDEX IF NOT EXISTS idx_deletion_log_title ON deletion_log(title);
 
+-- 10. Add notifications table for user alerts and request status updates
+CREATE TABLE IF NOT EXISTS notifications (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type TEXT NOT NULL, -- 'storage_alert', 'cleanup_complete', 'sync_error', 'recommendation', 'request_approved', 'request_available', etc.
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  severity TEXT NOT NULL DEFAULT 'info', -- 'info', 'warning', 'error', 'success'
+  read BOOLEAN NOT NULL DEFAULT FALSE,
+  data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  read_at TIMESTAMP WITH TIME ZONE,
+  
+  CONSTRAINT notifications_type_check CHECK (char_length(type) >= 1),
+  CONSTRAINT notifications_title_check CHECK (char_length(title) >= 1),
+  CONSTRAINT notifications_message_check CHECK (char_length(message) >= 1),
+  CONSTRAINT notifications_severity_check CHECK (severity IN ('info', 'warning', 'error', 'success'))
+);
+
+-- Indexes for notifications
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read) WHERE read = false;
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, created_at DESC) WHERE read = false;
+
+-- 11. Add audit_log table for tracking admin actions
+CREATE TABLE IF NOT EXISTS audit_log (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  action TEXT NOT NULL, -- 'create', 'update', 'delete', 'login', 'execute_cleanup', etc.
+  resource_type TEXT NOT NULL, -- 'integration', 'user', 'server', 'media_item', 'setting', etc.
+  resource_id TEXT,
+  changes JSONB DEFAULT '{}'::jsonb, -- before/after values
+  ip_address TEXT,
+  user_agent TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  CONSTRAINT audit_log_action_check CHECK (char_length(action) >= 1),
+  CONSTRAINT audit_log_resource_type_check CHECK (char_length(resource_type) >= 1)
+);
+
+-- Indexes for audit_log
+CREATE INDEX IF NOT EXISTS idx_audit_log_user_id ON audit_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_resource ON audit_log(resource_type, resource_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
+
+-- 12. Add system_settings table for global configuration
+CREATE TABLE IF NOT EXISTS system_settings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  key TEXT NOT NULL UNIQUE,
+  value JSONB NOT NULL,
+  description TEXT,
+  category TEXT NOT NULL, -- 'cache', 'cleanup', 'ai', 'notifications', 'integrations'
+  is_secret BOOLEAN NOT NULL DEFAULT FALSE, -- whether value should be masked in UI
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  
+  CONSTRAINT system_settings_key_check CHECK (char_length(key) >= 1),
+  CONSTRAINT system_settings_category_check CHECK (char_length(category) >= 1)
+);
+
+-- Indexes for system_settings
+CREATE INDEX IF NOT EXISTS idx_system_settings_category ON system_settings(category);
+CREATE INDEX IF NOT EXISTS idx_system_settings_updated_at ON system_settings(updated_at DESC);
+
+-- Trigger for system_settings updated_at
+CREATE OR REPLACE FUNCTION update_system_settings_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_system_settings_updated_at
+  BEFORE UPDATE ON system_settings
+  FOR EACH ROW
+  EXECUTE FUNCTION update_system_settings_updated_at();
+
 -- Comments
 COMMENT ON COLUMN users.webhook_secret IS 'Secret token for authenticating incoming webhooks';
 COMMENT ON COLUMN servers.preferred_connection_url IS 'Cached URL that successfully connected to Plex (performance optimization)';
@@ -207,3 +287,6 @@ COMMENT ON COLUMN webhook_log.server_id IS 'Server that sent this webhook';
 COMMENT ON TABLE sync_schedule IS 'Per-user configurable sync schedules for each service';
 COMMENT ON TABLE content_requests IS 'User content requests made through Overseerr integration';
 COMMENT ON TABLE deletion_log IS 'Audit log of all media deletions with reasons and scores';
+COMMENT ON TABLE notifications IS 'User notifications for request status, alerts, and system messages';
+COMMENT ON TABLE audit_log IS 'Audit trail of admin and user actions for security and compliance';
+COMMENT ON TABLE system_settings IS 'Global system configuration settings managed by admins';
