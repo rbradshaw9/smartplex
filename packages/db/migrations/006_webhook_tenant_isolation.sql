@@ -52,14 +52,15 @@ END $$;
 -- 5. Fix NULL values in media_items that break recommendations
 -- Add default values for scoring columns
 ALTER TABLE media_items ALTER COLUMN year SET DEFAULT 0;
-ALTER TABLE media_items ALTER COLUMN rating SET DEFAULT 0.0;
-ALTER TABLE media_items ALTER COLUMN duration SET DEFAULT 0;
+ALTER TABLE media_items ALTER COLUMN duration_ms SET DEFAULT 0;
 
 -- Update existing NULL values
 UPDATE media_items SET year = 0 WHERE year IS NULL;
-UPDATE media_items SET rating = 0.0 WHERE rating IS NULL;
-UPDATE media_items SET duration = 0 WHERE duration IS NULL;
-UPDATE media_items SET genres = '{}' WHERE genres IS NULL;
+UPDATE media_items SET duration_ms = 0 WHERE duration_ms IS NULL;
+
+-- Fix NULL values in user_stats
+UPDATE user_stats SET rating = 0.0 WHERE rating IS NULL;
+UPDATE user_stats SET completion_percentage = 0.0 WHERE completion_percentage IS NULL;
 
 -- 6. Add missing performance indexes
 CREATE INDEX IF NOT EXISTS idx_media_items_tmdb_id ON media_items(tmdb_id) WHERE tmdb_id IS NOT NULL;
