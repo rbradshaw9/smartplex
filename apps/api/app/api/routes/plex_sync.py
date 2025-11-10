@@ -234,11 +234,14 @@ async def sync_library_generator(
 @router.get("/sync-library-stream")
 async def sync_library_stream(
     plex_token: str = Query(..., description="Plex authentication token"),
-    user: dict = Depends(get_current_user),
+    auth_token: str = Query(..., description="Supabase auth token for SSE"),
     supabase: Client = Depends(get_supabase_client)
 ):
     """
     Stream library sync progress using Server-Sent Events (SSE).
+    
+    Note: EventSource doesn't support custom headers, so we pass auth token as query param.
+    This is only for SSE endpoints where headers aren't supported.
     
     Client should listen for 'data' events with JSON progress updates.
     
@@ -251,6 +254,23 @@ async def sync_library_stream(
     - eta_seconds: estimated seconds remaining
     - items_per_second: sync speed
     """
+    
+    # Validate auth token since EventSource can't send Authorization header
+    try:
+        user_response = supabase.auth.get_user(auth_token)
+        if not user_response or not user_response.user:
+            raise HTTPException(status_code=401, detail="Invalid auth token")
+        
+        # Get user details
+        user_result = supabase.table('users').select('*').eq('id', user_response.user.id).single().execute()
+        if not user_result.data:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        user = user_result.data
+        
+    except Exception as e:
+        logger.error(f"Auth validation failed: {e}")
+        raise HTTPException(status_code=403, detail="Authentication failed")
     
     return StreamingResponse(
         sync_library_generator(user['id'], plex_token, supabase),
@@ -270,72 +290,57 @@ async def get_storage_info(
     supabase: Client = Depends(get_supabase_client)
 ):
     """
-    Get storage information from Plex servers.
+    Get storage information from database (faster than querying Plex).
     
-    Returns total capacity, used space, and available space.
+    Returns used space calculated from media_items table.
+    Total capacity would require server filesystem access which Plex doesn't expose.
     """
     
     try:
-        conn_manager = PlexConnectionManager(supabase)
-        account = MyPlexAccount(token=plex_token)
+        # Get storage from database (much faster than querying Plex)
+        storage_query = supabase.table('media_items')\
+            .select('file_size_mb, type')\
+            .not_.is_('file_size_mb', 'null')\
+            .execute()
+        
+        total_size_mb = 0
+        total_items = 0
+        by_type = {}
+        
+        if storage_query.data:
+            for item in storage_query.data:
+                size_mb = item.get('file_size_mb', 0) or 0
+                item_type = item.get('type', 'unknown')
+                
+                total_size_mb += size_mb
+                total_items += 1
+                
+                if item_type not in by_type:
+                    by_type[item_type] = {'count': 0, 'size_mb': 0}
+                by_type[item_type]['count'] += 1
+                by_type[item_type]['size_mb'] += size_mb
+        
+        # Convert to human-readable
+        total_size_gb = round(total_size_mb / 1024, 2)
+        total_size_tb = round(total_size_mb / (1024 * 1024), 2)
+        
+        # Format by_type for response
+        by_type_formatted = {}
+        for media_type, stats in by_type.items():
+            by_type_formatted[media_type] = {
+                'count': stats['count'],
+                'size_gb': round(stats['size_mb'] / 1024, 2),
+                'size_tb': round(stats['size_mb'] / (1024 * 1024), 2)
+            }
         
         storage_info = {
-            "servers": [],
-            "total_capacity_bytes": 0,
-            "total_used_bytes": 0,
-            "total_available_bytes": 0
+            "total_items": total_items,
+            "total_used_mb": round(total_size_mb, 2),
+            "total_used_gb": total_size_gb,
+            "total_used_tb": total_size_tb,
+            "by_type": by_type_formatted,
+            "note": "Total capacity not available from Plex API. This shows media library size only."
         }
-        
-        for resource in account.resources():
-            if resource.product != 'Plex Media Server':
-                continue
-            
-            try:
-                server = await conn_manager.connect_to_server(resource, plex_token, user['id'])
-                if not server:
-                    continue
-                
-                # Try to get storage info from server
-                # Note: Plex doesn't always expose this easily, may need to query filesystem
-                sections = server.library.sections()
-                
-                total_size_bytes = 0
-                item_count = 0
-                
-                for section in sections:
-                    if section.type in ['movie', 'show']:
-                        try:
-                            # Get all items in section
-                            items = section.all()
-                            item_count += len(items)
-                            
-                            # Sum up file sizes
-                            for item in items:
-                                for media in getattr(item, 'media', []):
-                                    for part in getattr(media, 'parts', []):
-                                        total_size_bytes += getattr(part, 'size', 0)
-                        except Exception as section_error:
-                            logger.error(f"Failed to get storage for {section.title}: {section_error}")
-                            continue
-                
-                server_info = {
-                    "name": server.friendlyName,
-                    "machine_id": server.machineIdentifier,
-                    "used_bytes": total_size_bytes,
-                    "used_gb": round(total_size_bytes / (1024**3), 2),
-                    "item_count": item_count
-                }
-                
-                storage_info["servers"].append(server_info)
-                storage_info["total_used_bytes"] += total_size_bytes
-            
-            except Exception as server_error:
-                logger.error(f"Failed to get storage for {resource.name}: {server_error}")
-                continue
-        
-        # Convert totals to human-readable
-        storage_info["total_used_gb"] = round(storage_info["total_used_bytes"] / (1024**3), 2)
-        storage_info["total_used_tb"] = round(storage_info["total_used_bytes"] / (1024**4), 2)
         
         return storage_info
     

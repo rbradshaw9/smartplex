@@ -50,7 +50,13 @@ export default function DeletionManagementPage() {
   const [executing, setExecuting] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0, eta: '', title: '', section: '', itemsPerSecond: 0 })
-  const [storageInfo, setStorageInfo] = useState<{ total_used_gb: number; total_used_tb: number } | null>(null)
+  const [storageInfo, setStorageInfo] = useState<{ 
+    total_items: number
+    total_used_gb: number
+    total_used_tb: number
+    by_type?: Record<string, { count: number; size_gb: number }>
+    note?: string
+  } | null>(null)
   const [scanResults, setScanResults] = useState<ScanResults | null>(null)
   const [showRuleForm, setShowRuleForm] = useState(false)
   const [editingRule, setEditingRule] = useState<DeletionRule | null>(null)
@@ -316,8 +322,9 @@ Type "DELETE" below to confirm:`
       }
 
       // Connect to SSE endpoint for streaming progress
+      // EventSource doesn't support custom headers, so we pass auth token as query param
       const eventSource = new EventSource(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/plex/sync-library-stream?plex_token=${plexToken}`
+        `${process.env.NEXT_PUBLIC_API_URL}/api/plex/sync-library-stream?plex_token=${plexToken}&auth_token=${session.access_token}`
       )
 
       eventSource.onmessage = (event) => {
@@ -694,21 +701,38 @@ Type "DELETE" below to confirm:`
         {storageInfo && (
           <div className="bg-slate-800 rounded-lg p-6 mb-6">
             <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold mb-1">💾 Library Storage</h3>
-                <p className="text-slate-400 text-sm">Total media stored across all servers</p>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold mb-1">💾 Media Library Storage</h3>
+                <p className="text-slate-400 text-sm">
+                  {storageInfo.total_items.toLocaleString()} items • {storageInfo.note}
+                </p>
               </div>
               <div className="text-right">
                 <div className="text-3xl font-bold text-purple-400">{storageInfo.total_used_tb.toFixed(2)} TB</div>
-                <div className="text-slate-400 text-sm">{storageInfo.total_used_gb.toFixed(0)} GB</div>
+                <div className="text-slate-400 text-sm">{storageInfo.total_used_gb.toFixed(0)} GB total</div>
               </div>
             </div>
+            
+            {/* Breakdown by type */}
+            {storageInfo.by_type && Object.keys(storageInfo.by_type).length > 0 && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                {Object.entries(storageInfo.by_type).map(([type, stats]: [string, any]) => (
+                  <div key={type} className="bg-slate-700/50 rounded-lg p-3">
+                    <div className="text-xs text-slate-400 uppercase mb-1">{type}</div>
+                    <div className="text-lg font-semibold">{stats.count.toLocaleString()}</div>
+                    <div className="text-xs text-slate-500">{stats.size_gb.toFixed(1)} GB</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            
             {scanResults && scanResults.candidates.length > 0 && (
               <div className="mt-4 pt-4 border-t border-slate-700">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-400">Space that could be freed:</span>
+                  <span className="text-slate-400">💡 Space that could be freed:</span>
                   <span className="text-green-400 font-semibold">
                     {(scanResults.candidates.reduce((sum, c) => sum + (c.file_size_mb || 0), 0) / 1024).toFixed(2)} GB
+                    ({((scanResults.candidates.reduce((sum, c) => sum + (c.file_size_mb || 0), 0) / 1024) / storageInfo.total_used_gb * 100).toFixed(1)}%)
                   </span>
                 </div>
               </div>
