@@ -71,10 +71,15 @@ class DeletionService:
             # This would need library_id field in media_items
             logger.info(f"Excluding libraries: {rule['excluded_libraries']}")
         
-        media_response = query.execute()
+        try:
+            media_response = query.execute()
+        except Exception as e:
+            logger.error(f"Failed to query media items: {e}")
+            # Return empty if table doesn't exist or query fails
+            return []
         
-        if not media_response.data:
-            logger.info("No media items found")
+        if not media_response.data or len(media_response.data) == 0:
+            logger.info("No media items found in database")
             return []
         
         candidates = []
