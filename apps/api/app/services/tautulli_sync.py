@@ -162,7 +162,10 @@ class TautulliSyncService:
         """
         aggregated: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
             "play_count": 0,
+            "complete_play_count": 0,
+            "partial_play_count": 0,
             "total_duration_seconds": 0,
+            "total_percent_complete": 0.0,
             "last_watched": None,
             "title": None,
             "type": None,
@@ -177,6 +180,20 @@ class TautulliSyncService:
             
             # Increment play count
             stats["play_count"] += 1
+            
+            # Track completion rate
+            percent_complete = item.get("percent_complete", 0)
+            if percent_complete:
+                stats["total_percent_complete"] += float(percent_complete)
+                
+                # Count as complete if >90% watched
+                if float(percent_complete) >= 90:
+                    stats["complete_play_count"] += 1
+                else:
+                    stats["partial_play_count"] += 1
+            else:
+                # If no percent_complete, assume partial
+                stats["partial_play_count"] += 1
             
             # Add duration (convert milliseconds to seconds if needed)
             duration = item.get("duration", 0)
@@ -226,8 +243,16 @@ class TautulliSyncService:
             .eq("plex_id", rating_key)\
             .execute()
         
+        # Calculate average percent complete
+        avg_percent = 0.0
+        if stats["play_count"] > 0:
+            avg_percent = stats["total_percent_complete"] / stats["play_count"]
+        
         update_data = {
             "total_play_count": stats["play_count"],
+            "complete_play_count": stats["complete_play_count"],
+            "partial_play_count": stats["partial_play_count"],
+            "avg_percent_complete": round(avg_percent, 2),
             "total_watch_time_seconds": stats["total_duration_seconds"],
             "last_watched_at": stats["last_watched"].isoformat() if stats["last_watched"] else None,
             "tautulli_synced_at": datetime.now(timezone.utc).isoformat(),
