@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
     anthropic_api_key: Optional[str] = Field(default=None, alias="ANTHROPIC_API_KEY")
     
+    # Monitoring & Error Tracking
+    sentry_dsn: Optional[str] = Field(default=None, alias="SENTRY_DSN")
+    
     # Redis configuration  
     redis_url: str = Field(default="redis://localhost:6379", alias="REDIS_URL")
     

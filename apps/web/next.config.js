@@ -1,3 +1,6 @@
+// Import Sentry webpack plugin
+const { withSentryConfig } = require('@sentry/nextjs');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // DEBUGGING: Disable minification to see actual errors
@@ -48,4 +51,16 @@ const nextConfig = {
   },
 }
 
-module.exports = nextConfig// Build version 1762639217
+// Sentry configuration options
+const sentryWebpackPluginOptions = {
+  // Suppresses source map uploading logs during build
+  silent: true,
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+};
+
+// Export with Sentry wrapping
+module.exports = process.env.NEXT_PUBLIC_SENTRY_DSN
+  ? withSentryConfig(nextConfig, sentryWebpackPluginOptions)
+  : nextConfig;
+// Build version 1762639217

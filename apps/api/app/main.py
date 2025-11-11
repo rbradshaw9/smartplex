@@ -19,6 +19,9 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from app.config import get_settings
 from app.api.routes import health, sync, ai, plex_auth, plex, plex_sync, integrations, admin_deletion, admin_tautulli, webhooks, system_config
@@ -29,6 +32,21 @@ import logging
 
 # Setup logging
 logger = get_logger("main")
+
+# Initialize Sentry for error tracking
+settings = get_settings()
+if settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        integrations=[
+            FastApiIntegration(),
+            StarletteIntegration(),
+        ],
+        traces_sample_rate=1.0,  # Adjust in production
+        environment=settings.environment,
+        before_send=lambda event, hint: event if settings.sentry_dsn else None,
+    )
+    logger.info("🔔 Sentry error tracking initialized")
 
 # Suppress noisy PlexAPI connection logs
 logging.getLogger("plexapi").setLevel(logging.WARNING)
