@@ -373,9 +373,9 @@ async def get_recommendations(
                             
                             # Categorize based on rating
                             rating = stat.get('rating')
-                            if rating and rating >= 4:
+                            if rating is not None and rating >= 4:
                                 liked_items.append(item)
-                            elif rating and rating <= 2:
+                            elif rating is not None and rating <= 2:
                                 disliked_items.append(item)
                 
                 # Build user context dict

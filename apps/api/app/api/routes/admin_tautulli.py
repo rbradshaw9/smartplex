@@ -255,12 +255,10 @@ async def stream_tautulli_sync(
             
             while True:
                 try:
-                    # Fetch batch from Tautulli
+                    # Fetch batch from Tautulli (API returns results in descending date order by default)
                     history_batch = await tautulli.get_history(
                         length=batch_size,
-                        start=offset,
-                        order_column="date",
-                        order_dir="desc"
+                        start=offset
                     )
                     
                     if not history_batch or "data" not in history_batch:
