@@ -172,6 +172,9 @@ class DeletionService:
                 "plex_id": item['plex_id'],
                 "title": item['title'],
                 "type": item['type'],
+                "parent_title": item.get('parent_title'),  # TV show name for episodes
+                "season_number": item.get('season_number'),  # Season number for episodes
+                "episode_number": item.get('episode_number'),  # Episode number
                 "date_added": date_added.isoformat(),
                 "last_viewed_at": last_viewed.isoformat(),
                 "view_count": view_count,

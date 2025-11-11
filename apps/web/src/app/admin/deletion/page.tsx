@@ -26,6 +26,9 @@ interface DeletionCandidate {
   plex_id: string
   title: string
   type: string
+  parent_title?: string | null  // TV show name for episodes
+  season_number?: number | null  // Season number for episodes
+  episode_number?: number | null  // Episode number
   date_added: string
   last_viewed_at: string
   view_count: number
@@ -648,6 +651,16 @@ Type "DELETE" below to confirm:`
     return `${(mb / 1024).toFixed(2)} GB`
   }
 
+  // Format title with show/season/episode info for TV episodes
+  const formatTitle = (candidate: DeletionCandidate) => {
+    if (candidate.type === 'episode' && candidate.parent_title) {
+      const season = candidate.season_number ? `S${candidate.season_number.toString().padStart(2, '0')}` : 'S??'
+      const episode = candidate.episode_number ? `E${candidate.episode_number.toString().padStart(2, '0')}` : 'E??'
+      return `${candidate.parent_title} - ${season}${episode} - ${candidate.title}`
+    }
+    return candidate.title
+  }
+
   // Get filtered and sorted candidates
   const getFilteredAndSortedCandidates = () => {
     if (!scanResults) return []
@@ -721,6 +734,46 @@ Type "DELETE" below to confirm:`
       // Select all filtered
       setSelectedCandidates(new Set(filtered.map(c => c.id)))
     }
+  }
+
+  // Get unique TV shows from candidates
+  const getTVShows = () => {
+    if (!scanResults) return []
+    const shows = new Map<string, { name: string, count: number, ids: string[] }>()
+    
+    scanResults.candidates
+      .filter(c => c.type === 'episode' && c.parent_title)
+      .forEach(c => {
+        const showName = c.parent_title!
+        if (!shows.has(showName)) {
+          shows.set(showName, { name: showName, count: 0, ids: [] })
+        }
+        const show = shows.get(showName)!
+        show.count++
+        show.ids.push(c.id)
+      })
+    
+    return Array.from(shows.values()).sort((a, b) => b.count - a.count)
+  }
+
+  const selectAllFromShow = (showName: string) => {
+    const filtered = getFilteredAndSortedCandidates()
+    const showEpisodes = filtered
+      .filter(c => c.type === 'episode' && c.parent_title === showName)
+      .map(c => c.id)
+    
+    setSelectedCandidates(new Set([...selectedCandidates, ...showEpisodes]))
+  }
+
+  const deselectAllFromShow = (showName: string) => {
+    const filtered = getFilteredAndSortedCandidates()
+    const showEpisodes = filtered
+      .filter(c => c.type === 'episode' && c.parent_title === showName)
+      .map(c => c.id)
+    
+    const newSelected = new Set(selectedCandidates)
+    showEpisodes.forEach(id => newSelected.delete(id))
+    setSelectedCandidates(newSelected)
   }
 
   const deleteSelected = async (dryRun: boolean = false) => {
@@ -1319,6 +1372,38 @@ Type "DELETE" below to confirm:`
               </div>
             </div>
 
+            {/* TV Show Bulk Selection */}
+            {getTVShows().length > 0 && (
+              <div className="mb-6 p-4 bg-slate-700/50 rounded-lg">
+                <h4 className="text-sm font-semibold mb-3 text-slate-300">📺 Select by TV Show</h4>
+                <div className="flex flex-wrap gap-2">
+                  {getTVShows().map(show => {
+                    const filtered = getFilteredAndSortedCandidates()
+                    const showEpisodes = filtered.filter(c => c.type === 'episode' && c.parent_title === show.name)
+                    const allSelected = showEpisodes.every(ep => selectedCandidates.has(ep.id))
+                    const someSelected = showEpisodes.some(ep => selectedCandidates.has(ep.id)) && !allSelected
+                    
+                    return (
+                      <button
+                        key={show.name}
+                        onClick={() => allSelected ? deselectAllFromShow(show.name) : selectAllFromShow(show.name)}
+                        className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                          allSelected 
+                            ? 'bg-purple-600 hover:bg-purple-700 text-white' 
+                            : someSelected
+                            ? 'bg-purple-900/50 hover:bg-purple-800 text-purple-200 border border-purple-500'
+                            : 'bg-slate-600 hover:bg-slate-500 text-slate-200'
+                        }`}
+                      >
+                        {show.name} ({showEpisodes.length})
+                        {allSelected && ' ✓'}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {scanResults.candidates.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -1382,7 +1467,7 @@ Type "DELETE" below to confirm:`
                             className="w-4 h-4 cursor-pointer"
                           />
                         </td>
-                        <td className="p-3 font-medium">{candidate.title}</td>
+                        <td className="p-3 font-medium">{formatTitle(candidate)}</td>
                         <td className="p-3 text-slate-400">{candidate.type}</td>
                         <td className="p-3 text-right">{candidate.days_since_added}d</td>
                         <td className="p-3 text-right text-yellow-400">{candidate.days_since_viewed}d</td>
