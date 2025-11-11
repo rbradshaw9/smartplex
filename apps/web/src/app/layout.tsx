@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { Header } from '@/components/layout/header'
 import { Footer } from '@/components/layout/footer'
+import { FeedbackButton } from '@/components/feedback/feedback-button'
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { Database } from '@smartplex/db/types'
@@ -41,6 +42,7 @@ export default async function RootLayout({
           {children}
         </main>
         <Footer />
+        {user && <FeedbackButton />}
       </body>
     </html>
   )
