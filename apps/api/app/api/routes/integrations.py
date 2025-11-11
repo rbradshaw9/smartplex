@@ -3,11 +3,11 @@ Integration management API endpoints.
 Provides CRUD operations for external service integrations.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from supabase import Client
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 from app.core.supabase import get_current_user, get_supabase_client
@@ -427,6 +427,7 @@ class OverseerrRequestCreate(BaseModel):
     """Request model for creating Overseerr request."""
     media_type: str = Field(..., pattern="^(movie|tv)$", description="Media type")
     media_id: int = Field(..., description="TMDB ID")
+    title: Optional[str] = Field(None, description="Media title for logging")
     seasons: List[int] | None = Field(None, description="Season numbers for TV shows")
     is_4k: bool = Field(default=False, description="Request 4K quality")
     overseerr_user_id: int | None = Field(None, description="Overseerr user ID (optional, will try to find by email if not provided)")
@@ -487,6 +488,43 @@ async def search_overseerr(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to search media"
+        )
+
+
+@router.get("/overseerr/requests")
+async def get_overseerr_requests(
+    limit: int = 50,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
+):
+    """
+    Get user's Overseerr request history.
+    
+    Args:
+        limit: Maximum number of requests to return
+        current_user: Authenticated user
+        supabase: Database client
+        
+    Returns:
+        List of requests with status
+    """
+    try:
+        result = supabase.table('overseerr_requests')\
+            .select('*')\
+            .eq('user_id', current_user['id'])\
+            .order('requested_at', desc=True)\
+            .limit(limit)\
+            .execute()
+        
+        return {
+            "requests": result.data or [],
+            "count": len(result.data) if result.data else 0
+        }
+    except Exception as e:
+        logger.error(f"Error fetching Overseerr requests: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch request history"
         )
 
 
@@ -565,6 +603,23 @@ async def create_overseerr_request(
                     .execute()
             except Exception as update_error:
                 logger.warning(f"Could not store Overseerr user ID: {update_error}")
+        
+        # Log the request to our database for tracking
+        try:
+            request_log = {
+                "user_id": current_user['id'],
+                "overseerr_user_id": overseerr_user_id,
+                "media_title": request_data.title or f"{request_data.media_type} {request_data.media_id}",
+                "media_type": request_data.media_type,
+                "tmdb_id": request_data.media_id,
+                "seasons": request_data.seasons,
+                "overseerr_request_id": request_result.get('id') if isinstance(request_result, dict) else None,
+                "overseerr_status": request_result.get('status', 'pending') if isinstance(request_result, dict) else 'pending',
+                "requested_at": datetime.now(timezone.utc).isoformat()
+            }
+            supabase.table('overseerr_requests').insert(request_log).execute()
+        except Exception as log_error:
+            logger.warning(f"Could not log Overseerr request: {log_error}")
         
         return request_result
         

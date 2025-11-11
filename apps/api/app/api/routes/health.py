@@ -94,3 +94,63 @@ async def readiness_check(
         # Return 503 if not ready
         from fastapi import HTTPException
         raise HTTPException(status_code=503, detail="Service not ready")
+
+
+@router.get("/stats")
+async def system_stats(
+    supabase: Client = Depends(get_supabase_client)
+) -> Dict[str, Any]:
+    """
+    Get system statistics and database counts.
+    Useful for admin dashboards and monitoring.
+    """
+    try:
+        stats = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "counts": {},
+            "recent_activity": {}
+        }
+        
+        # Get counts for main tables
+        tables = ['users', 'servers', 'media_items', 'deletion_events', 'sync_events']
+        for table in tables:
+            try:
+                result = supabase.table(table).select('id', count='exact').limit(1).execute()
+                stats["counts"][table] = result.count if hasattr(result, 'count') else 0
+            except:
+                stats["counts"][table] = 0
+        
+        # Get most recent sync
+        try:
+            recent_sync = supabase.table('sync_events')\
+                .select('*')\
+                .order('started_at', desc=True)\
+                .limit(1)\
+                .execute()
+            if recent_sync.data:
+                stats["recent_activity"]["last_sync"] = recent_sync.data[0]
+        except:
+            pass
+        
+        # Get storage usage
+        try:
+            storage_result = supabase.table('media_items')\
+                .select('file_size_mb')\
+                .not_.is_('file_size_mb', 'null')\
+                .execute()
+            if storage_result.data:
+                total_mb = sum(item.get('file_size_mb', 0) or 0 for item in storage_result.data)
+                stats["storage"] = {
+                    "total_mb": total_mb,
+                    "total_gb": round(total_mb / 1024, 2),
+                    "total_tb": round(total_mb / (1024 * 1024), 2)
+                }
+        except:
+            pass
+        
+        return stats
+    except Exception as e:
+        return {
+            "error": "Failed to retrieve system statistics",
+            "details": str(e)
+        }
