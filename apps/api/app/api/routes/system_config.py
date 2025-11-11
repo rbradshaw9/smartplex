@@ -19,6 +19,17 @@ router = APIRouter()
 logger = get_logger("system_config")
 
 
+class StorageQualityBreakdown(BaseModel):
+    """Storage breakdown by quality."""
+    video_resolution: Optional[str]
+    video_codec: Optional[str]
+    container: Optional[str]
+    item_count: int
+    total_gb: float
+    avg_bitrate_kbps: Optional[float]
+    avg_size_gb: float
+
+
 class StorageCapacityConfig(BaseModel):
     """Storage capacity configuration."""
     total_gb: float = Field(..., description="Total storage capacity in GB", gt=0)
@@ -207,3 +218,114 @@ async def get_config_by_key(
     except Exception as e:
         logger.error(f"Error fetching config key {key}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch config: {str(e)}")
+
+
+@router.get("/storage/quality-analysis")
+async def get_storage_quality_analysis(
+    supabase: Client = Depends(get_supabase_client),
+    user: dict = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Get storage breakdown by quality (resolution, codec, container).
+    
+    Returns storage optimization insights like:
+    - H.264 vs HEVC compression opportunities
+    - 4K vs 1080p vs 720p distribution
+    - Container format breakdown
+    
+    Admin-only endpoint.
+    """
+    # Check if user is admin
+    if user.get('role') != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        # Query the storage_quality_analysis view
+        result = supabase.table('storage_quality_analysis')\
+            .select('*')\
+            .execute()
+        
+        breakdowns = result.data or []  # type: ignore
+        
+        # Calculate totals and insights
+        total_items = sum(b.get('item_count', 0) for b in breakdowns)  # type: ignore
+        total_gb = sum(b.get('total_gb', 0) for b in breakdowns)  # type: ignore
+        
+        # Group by codec for compression insights
+        codec_breakdown = {}
+        for item in breakdowns:
+            codec = item.get('video_codec', 'unknown')
+            if codec not in codec_breakdown:
+                codec_breakdown[codec] = {'count': 0, 'total_gb': 0}
+            codec_breakdown[codec]['count'] += item.get('item_count', 0)
+            codec_breakdown[codec]['total_gb'] += item.get('total_gb', 0)
+        
+        # Group by resolution
+        resolution_breakdown = {}
+        for item in breakdowns:
+            res = item.get('video_resolution', 'unknown')
+            if res not in resolution_breakdown:
+                resolution_breakdown[res] = {'count': 0, 'total_gb': 0}
+            resolution_breakdown[res]['count'] += item.get('item_count', 0)
+            resolution_breakdown[res]['total_gb'] += item.get('total_gb', 0)
+        
+        # Calculate H.264 to HEVC potential savings (HEVC is ~40% smaller)
+        h264_gb = codec_breakdown.get('h264', {}).get('total_gb', 0)
+        hevc_savings_estimate_gb = round(h264_gb * 0.4, 2) if h264_gb > 0 else 0
+        
+        return {
+            "summary": {
+                "total_items": total_items,
+                "total_gb": round(total_gb, 2),
+                "unique_combinations": len(breakdowns)
+            },
+            "by_codec": codec_breakdown,
+            "by_resolution": resolution_breakdown,
+            "insights": {
+                "h264_to_hevc_savings_gb": hevc_savings_estimate_gb,
+                "h264_percentage": round((h264_gb / total_gb * 100), 1) if total_gb > 0 else 0,
+                "hevc_percentage": round((codec_breakdown.get('hevc', {}).get('total_gb', 0) / total_gb * 100), 1) if total_gb > 0 else 0
+            },
+            "detailed_breakdown": breakdowns
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching storage quality analysis: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch quality analysis: {str(e)}")
+
+
+@router.get("/storage/inaccessible-files")
+async def get_inaccessible_files(
+    supabase: Client = Depends(get_supabase_client),
+    user: dict = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Get list of broken/missing files.
+    
+    Returns files marked as inaccessible during sync.
+    Useful for identifying storage issues and cleanup opportunities.
+    
+    Admin-only endpoint.
+    """
+    # Check if user is admin
+    if user.get('role') != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        # Query the inaccessible_files view
+        result = supabase.table('inaccessible_files')\
+            .select('*')\
+            .execute()
+        
+        files = result.data or []
+        total_wasted_gb = sum(f.get('size_gb', 0) for f in files)
+        
+        return {
+            "total_inaccessible": len(files),
+            "total_wasted_gb": round(total_wasted_gb, 2),
+            "files": files
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching inaccessible files: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch inaccessible files: {str(e)}")

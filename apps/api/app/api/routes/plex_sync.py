@@ -25,6 +25,50 @@ logger = get_logger("plex.sync")
 _active_syncs: dict[str, bool] = {}  # user_id -> is_cancelled
 
 
+def extract_quality_metadata(item) -> dict:
+    """
+    Extract video/audio quality metadata from Plex media item.
+    
+    Returns dict with resolution, codecs, container, bitrate, file_path, accessible.
+    """
+    quality_data = {
+        'video_resolution': None,
+        'video_codec': None,
+        'audio_codec': None,
+        'container': None,
+        'bitrate_kbps': None,
+        'file_path': None,
+        'accessible': True
+    }
+    
+    try:
+        # Get first media stream (usually the main file)
+        media_list = getattr(item, 'media', [])
+        if not media_list:
+            return quality_data
+        
+        media = media_list[0]
+        
+        # Extract quality metadata
+        quality_data['video_resolution'] = getattr(media, 'videoResolution', None)  # "1080p", "4k", etc
+        quality_data['video_codec'] = getattr(media, 'videoCodec', None)  # "h264", "hevc", etc
+        quality_data['audio_codec'] = getattr(media, 'audioCodec', None)  # "aac", "dts", etc
+        quality_data['container'] = getattr(media, 'container', None)  # "mkv", "mp4", etc
+        quality_data['bitrate_kbps'] = getattr(media, 'bitrate', None)  # Already in kbps
+        
+        # Get file path and accessibility
+        parts = getattr(media, 'parts', [])
+        if parts:
+            part = parts[0]
+            quality_data['file_path'] = getattr(part, 'file', None)
+            quality_data['accessible'] = getattr(part, 'accessible', True)
+    
+    except Exception as e:
+        logger.debug(f"Failed to extract quality metadata: {e}")
+    
+    return quality_data
+
+
 async def get_current_storage_stats(supabase: Client) -> dict:
     """Calculate current storage statistics from database."""
     try:
@@ -220,6 +264,9 @@ async def sync_library_generator(
                                         if plex_added_at:
                                             metadata['plex_added_at'] = plex_added_at
                                         
+                                        # Extract quality metadata
+                                        quality_data = extract_quality_metadata(episode)
+                                        
                                         # Upsert episode to database
                                         media_data = {
                                             'server_id': server_id,
@@ -232,7 +279,8 @@ async def sync_library_generator(
                                             'metadata': metadata if metadata else None,
                                             'tmdb_id': tmdb_id,
                                             'tvdb_id': tvdb_id,
-                                            'imdb_id': imdb_id
+                                            'imdb_id': imdb_id,
+                                            **quality_data  # Add quality fields
                                         }
                                         
                                         try:
@@ -319,6 +367,9 @@ async def sync_library_generator(
                                 if plex_added_at:
                                     metadata['plex_added_at'] = plex_added_at
                                 
+                                # Extract quality metadata
+                                quality_data = extract_quality_metadata(item)
+                                
                                 # Upsert to database
                                 media_data = {
                                     'server_id': server_id,
@@ -331,7 +382,8 @@ async def sync_library_generator(
                                     'metadata': metadata if metadata else None,
                                     'tmdb_id': tmdb_id,
                                     'tvdb_id': tvdb_id,
-                                    'imdb_id': imdb_id
+                                    'imdb_id': imdb_id,
+                                    **quality_data  # Add quality fields
                                 }
                                 
                                 try:
