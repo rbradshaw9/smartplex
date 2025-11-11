@@ -6,6 +6,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { User } from '@supabase/supabase-js'
 import { Database } from '@smartplex/db/types'
 import { UserMenu } from './user-menu'
+import { LoginModal } from '../auth/login-modal'
 
 interface HeaderProps {
   user?: User | null
@@ -14,6 +15,7 @@ interface HeaderProps {
 export function Header({ user }: HeaderProps) {
   const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
   const supabase = createClientComponentClient<Database>()
@@ -112,7 +114,7 @@ export function Header({ user }: HeaderProps) {
               <UserMenu user={user} isAdmin={isAdmin} />
             ) : (
               <button
-                onClick={() => router.push('/')}
+                onClick={() => setIsLoginModalOpen(true)}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm"
               >
                 Sign In
@@ -121,6 +123,12 @@ export function Header({ user }: HeaderProps) {
           </div>
         </div>
       </div>
+
+      {/* Login Modal */}
+      <LoginModal 
+        isOpen={isLoginModalOpen} 
+        onClose={() => setIsLoginModalOpen(false)} 
+      />
     </header>
   )
 }
