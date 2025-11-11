@@ -78,7 +78,7 @@ async def chat_with_ai(
         if not settings.openai_api_key:
             # Fallback response when AI isn't configured
             return ChatResponse(
-                response="🤖 AI chat is not yet configured. Please add an OPENAI_API_KEY environment variable to enable AI features. In the meantime, you can explore your dashboard, add integrations, and manage your media library!",
+                response="🤖 AI chat is currently unavailable. The administrator needs to configure the AI service. In the meantime, you can explore your dashboard, browse recommendations, and request new content!",
                 context_used=False,
                 tokens_used=0,
                 model_used="fallback",
