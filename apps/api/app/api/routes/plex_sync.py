@@ -2,7 +2,6 @@
 Streaming Plex Library Sync with Real-Time Progress.
 
 Uses Server-Sent Events (SSE) to stream sync progress to the client.
-See WEBHOOKS_SETUP.md for webhook configuration details.
 """
 
 import asyncio
@@ -20,347 +19,176 @@ from app.core.logging import get_logger
 from app.core.plex_connection import PlexConnectionManager
 
 router = APIRouter()
-
-- Updates `total_play_count`, `last_watched_at`, `total_watch_time_seconds` on media_itemslogger = get_logger("plex.sync")
-
-- Enables accurate deletion decisions based on viewing activity
+logger = get_logger("plex.sync")
 
 # Global sync cancellation tracking (in production, use Redis or DB)
+_active_syncs: dict[str, bool] = {}  # user_id -> is_cancelled
 
----_active_syncs: dict[str, bool] = {}  # user_id -> is_cancelled
-
-
-
-## 2. Tautulli Webhooks (Real-time Stats)
 
 async def get_current_storage_stats(supabase: Client) -> dict:
-
-**Purpose**: Get immediate watch stat updates (optional - Plex webhook also works)    """Calculate current storage statistics from database."""
-
+    """Calculate current storage statistics from database."""
     try:
-
-**Setup**:        storage_query = supabase.table('media_items')\
-
-1. Go to Tautulli → Settings → Notification Agents            .select('file_size_bytes')\
-
-2. Click "+ Add a new notification agent" → Webhook            .not_.is_('file_size_bytes', 'null')\
-
-3. **Webhook URL**: `https://your-railway-api.up.railway.app/api/webhooks/tautulli`            .execute()
-
-4. **Webhook Method**: POST        
-
-5. **Triggers**: Select "Watched" (playback completed)        total_size_bytes = sum(item.get('file_size_bytes', 0) or 0 for item in (storage_query.data or []))
-
-6. Click "Save"        total_used_gb = round(total_size_bytes / (1024 * 1024 * 1024), 2)
-
+        storage_query = supabase.table('media_items')\
+            .select('file_size_bytes')\
+            .not_.is_('file_size_bytes', 'null')\
+            .execute()
         
-
-**Triggered Events**:        # Get capacity config
-
-- `watched` - Media fully watched        capacity_config = supabase.table('system_config')\
-
+        total_size_bytes = sum(item.get('file_size_bytes', 0) or 0 for item in (storage_query.data or []))
+        total_used_gb = round(total_size_bytes / (1024 * 1024 * 1024), 2)
+        
+        # Get capacity config
+        capacity_config = supabase.table('system_config')\
             .select('value')\
-
-**What it does**:            .eq('key', 'storage_capacity')\
-
-- Same as Plex webhook but with Tautulli-specific data            .execute()
-
-- Redundant if Plex webhook is already configured        
-
+            .eq('key', 'storage_capacity')\
+            .execute()
+        
         total_capacity_gb = None
-
----        if capacity_config.data and len(capacity_config.data) > 0:
-
+        if capacity_config.data and len(capacity_config.data) > 0:
             capacity_data = capacity_config.data[0]['value']
-
-## 3. Sonarr Webhooks (TV Show Management)            total_capacity_gb = capacity_data.get('total_gb')
-
+            total_capacity_gb = capacity_data.get('total_gb')
         
-
-**Purpose**: Auto-sync library when episodes are added/deleted        return {
-
+        return {
             "total_used_gb": total_used_gb,
+            "total_capacity_gb": total_capacity_gb,
+            "free_gb": round(total_capacity_gb - total_used_gb, 2) if total_capacity_gb else None,
+            "used_percentage": round((total_used_gb / total_capacity_gb) * 100, 1) if total_capacity_gb else None
+        }
+    except Exception as e:
+        logger.warning(f"Failed to calculate storage stats: {e}")
+        return {}
 
-**Setup**:            "total_capacity_gb": total_capacity_gb,
 
-1. Go to Sonarr → Settings → Connect            "free_gb": round(total_capacity_gb - total_used_gb, 2) if total_capacity_gb else None,
-
-2. Click "+" to add new connection            "used_percentage": round((total_used_gb / total_capacity_gb) * 100, 1) if total_capacity_gb else None
-
-3. Select "Webhook"        }
-
-4. **Name**: SmartPlex    except Exception as e:
-
-5. **URL**: `https://your-railway-api.up.railway.app/api/webhooks/sonarr`        logger.warning(f"Failed to calculate storage stats: {e}")
-
-6. **Triggers**: Select:        return {}
-
-   - ✅ On Import (episode downloaded)
-
-   - ✅ On Episode File Delete
-
-   - ✅ On Series Deleteasync def sync_library_generator(
-
-7. Click "Save"    user_id: str,
-
+async def sync_library_generator(
+    user_id: str,
     plex_token: str,
-
-**Triggered Events**:    supabase: Client
-
-- `EpisodeFileImport` - New episode added) -> AsyncGenerator[str, None]:
-
-- `EpisodeFileDelete` - Episode deleted    """
-
-- `SeriesDelete` - Entire series removed    Generator that yields SSE (Server-Sent Events) for real-time sync progress.
-
+    supabase: Client
+) -> AsyncGenerator[str, None]:
+    """
+    Generator that yields SSE (Server-Sent Events) for real-time sync progress.
     
-
-**What it does**:    Yields progress updates in format:
-
-- Triggers incremental library sync (only updates changed series)    data: {"current": 10, "total": 100, "title": "Movie Name", "eta_seconds": 45}
-
-- Keeps database in sync with Sonarr without full re-scan    """
-
-- Updates media_items table with new/removed content    
-
+    Yields progress updates in format:
+    data: {"current": 10, "total": 100, "title": "Movie Name", "eta_seconds": 45}
+    """
+    
     conn_manager = PlexConnectionManager(supabase)
-
----    start_time = datetime.now(timezone.utc)
-
+    start_time = datetime.now(timezone.utc)
     last_storage_update = 0  # Track when we last sent storage update
-
-## 4. Radarr Webhooks (Movie Management)    synced_plex_ids = set()  # Track all Plex IDs we see during sync for orphan cleanup
-
+    synced_plex_ids = set()  # Track all Plex IDs we see during sync for orphan cleanup
     
-
-**Purpose**: Auto-sync library when movies are added/deleted    # Initialize sync state
-
+    # Initialize sync state
     _active_syncs[user_id] = False  # False = not cancelled
-
-**Setup**:    
-
-1. Go to Radarr → Settings → Connect    try:
-
-2. Click "+" to add new connection        # Step 1: Connect to Plex
-
-3. Select "Webhook"        yield f'data: {{"status": "connecting", "message": "Connecting to Plex account..."}}\n\n'
-
-4. **Name**: SmartPlex        
-
-5. **URL**: `https://your-railway-api.up.railway.app/api/webhooks/radarr`        account = MyPlexAccount(token=plex_token)
-
-6. **Triggers**: Select:        resources = account.resources()
-
-   - ✅ On Import (movie downloaded)        
-
-   - ✅ On Movie File Delete        if not resources:
-
-   - ✅ On Movie Delete            yield f'data: {{"status": "error", "message": "No Plex servers found"}}\n\n'
-
-7. Click "Save"            return
-
+    
+    try:
+        # Step 1: Connect to Plex
+        yield f'data: {{"status": "connecting", "message": "Connecting to Plex account..."}}\n\n'
         
-
-**Triggered Events**:        # Step 2: Connect to servers
-
-- `MovieFileImport` - New movie added        servers_connected = 0
-
-- `MovieFileDelete` - Movie file deleted        total_items = 0
-
-- `MovieDelete` - Movie removed from Radarr        synced_items = 0
-
+        account = MyPlexAccount(token=plex_token)
+        resources = account.resources()
         
-
-**What it does**:        for resource in resources:
-
-- Triggers incremental library sync (only updates changed movie)            if resource.product != 'Plex Media Server':
-
-- Keeps database in sync with Radarr without full re-scan                continue
-
-- Updates media_items table with new/removed content            
-
+        if not resources:
+            yield f'data: {{"status": "error", "message": "No Plex servers found"}}\n\n'
+            return
+        
+        # Step 2: Connect to servers
+        servers_connected = 0
+        total_items = 0
+        synced_items = 0
+        
+        for resource in resources:
+            if resource.product != 'Plex Media Server':
+                continue
+            
             try:
-
----                yield f'data: {{"status": "connecting", "message": "Connecting to {resource.name}..."}}\n\n'
-
+                yield f'data: {{"status": "connecting", "message": "Connecting to {resource.name}..."}}\n\n'
                 
-
-## 5. Overseerr Webhooks (Request Notifications) - OPTIONAL                server = await conn_manager.connect_to_server(resource, plex_token, user_id)
-
+                server = await conn_manager.connect_to_server(resource, plex_token, user_id)
                 if not server:
-
-**Purpose**: Get notified when users make requests                    continue
-
-                
-
-**Setup**:                servers_connected += 1
-
-1. Go to Overseerr → Settings → Notifications → Webhook                
-
-2. Enable "Enable Agent"                # Get or create server record
-
-3. **Webhook URL**: `https://your-railway-api.up.railway.app/api/webhooks/overseerr`                server_record = supabase.table('servers').upsert({
-
-4. **JSON Payload**: (leave default)                    'user_id': user_id,
-
-5. **Notification Types**: Select what you want to track                    'name': server.friendlyName,
-
-6. Click "Save Changes"                    'url': server._baseurl,
-
-                    'machine_id': server.machineIdentifier,
-
-**Triggered Events**:                    'platform': server.platform,
-
-- Request created/approved/declined                    'version': server.version,
-
-- Media available/failed                    'status': 'online',
-
-                    'last_seen_at': datetime.now(timezone.utc).isoformat(),
-
-**What it does**:                }, on_conflict='user_id,machine_id').execute()
-
-- Logs request activity to admin_activity_log                
-
-- Can trigger notifications or automation (future feature)                if not server_record.data:  # type: ignore
-
                     continue
-
----                
-
+                
+                servers_connected += 1
+                
+                # Get or create server record
+                server_record = supabase.table('servers').upsert({
+                    'user_id': user_id,
+                    'name': server.friendlyName,
+                    'url': server._baseurl,
+                    'machine_id': server.machineIdentifier,
+                    'platform': server.platform,
+                    'version': server.version,
+                    'status': 'online',
+                    'last_seen_at': datetime.now(timezone.utc).isoformat(),
+                }, on_conflict='user_id,machine_id').execute()
+                
+                if not server_record.data:  # type: ignore
+                    continue
+                
                 server_id = server_record.data[0]['id']  # type: ignore
-
-## Testing Webhooks                
-
+                
                 # Get library sections
-
-After setup, test each webhook:                sections = server.library.sections()
-
+                sections = server.library.sections()
                 movie_sections = [s for s in sections if s.type in ['movie', 'show']]
-
-1. **Plex**: Watch a movie for 90%+ or rate something                
-
-2. **Sonarr**: Manually import an episode or delete one                # Count total items first (episodes for shows, movies for movies)
-
-3. **Radarr**: Manually import a movie or delete one                yield f'data: {{"status": "counting", "message": "Counting library items..."}}\n\n'
-
-4. **Overseerr**: Make a test request                
-
+                
+                # Count total items first (episodes for shows, movies for movies)
+                yield f'data: {{"status": "counting", "message": "Counting library items..."}}\n\n'
+                
                 for section in movie_sections:
-
-Check Railway logs for webhook activity:                    try:
-
-```bash                        if section.type == 'show':
-
-railway logs --follow                            # Count episodes, not shows
-
-```                            for show in section.all():
-
+                    try:
+                        if section.type == 'show':
+                            # Count episodes, not shows
+                            for show in section.all():
                                 try:
-
-Look for:                                    total_items += len(show.episodes())
-
-```                                except:
-
-📥 Received Plex webhook: media.scrobble                                    pass
-
-📺 Sonarr webhook: EpisodeFileImport                        else:
-
-🎬 Radarr webhook: MovieFileImport                            # Count movies directly
-
-```                            total_items += section.totalSize
-
+                                    total_items += len(show.episodes())
+                                except:
+                                    pass
+                        else:
+                            # Count movies directly
+                            total_items += section.totalSize
                     except Exception as e:
-
----                        logger.warning(f"Failed to count section {section.title}: {e}")
-
+                        logger.warning(f"Failed to count section {section.title}: {e}")
                         pass
-
-## Webhook Security                
-
+                
                 yield f'data: {{"status": "syncing", "total": {total_items}, "current": 0, "message": "Starting sync..."}}\n\n'
-
-All webhooks are currently open (no authentication). For production:                
-
+                
                 # Now sync each section
-
-1. Add webhook secret to environment variables                for section in movie_sections:
-
-2. Verify request signatures                    section_name = section.title
-
-3. Rate limit webhook endpoints                    
-
-4. Log suspicious activity                    try:
-
+                for section in movie_sections:
+                    section_name = section.title
+                    
+                    try:
                         items = section.all()
-
----                        
-
+                        
                         for item in items:
-
-## Troubleshooting                            # Check for cancellation
-
+                            # Check for cancellation
                             if _active_syncs.get(user_id, False):
-
-**Webhook not received**:                                logger.info(f"Sync cancelled by user {user_id}")
-
-- Check Railway URL is correct (https, no typos)                                yield f'data: {{"status": "cancelled", "message": "Sync cancelled by user", "current": {synced_items}, "total": {total_items}}}\n\n'
-
-- Verify Railway service is running                                _active_syncs.pop(user_id, None)
-
-- Check firewall/network allows outbound webhooks                                return
-
-- View source app logs (Plex/Sonarr/Radarr) for webhook errors                            
-
+                                logger.info(f"Sync cancelled by user {user_id}")
+                                yield f'data: {{"status": "cancelled", "message": "Sync cancelled by user", "current": {synced_items}, "total": {total_items}}}\n\n'
+                                _active_syncs.pop(user_id, None)
+                                return
+                            
                             # For TV shows, iterate through all episodes
-
-**Webhook received but not processing**:                            if section.type == 'show':
-
-- Check Railway logs for error messages                                try:
-
-- Verify Supabase credentials are set                                    # Get all episodes for this show
-
-- Check database has necessary tables                                    episodes = item.episodes()
-
-- Ensure integration is configured and enabled                                    
-
+                            if section.type == 'show':
+                                try:
+                                    # Get all episodes for this show
+                                    episodes = item.episodes()
+                                    
                                     for episode in episodes:
-
-**Duplicate events**:                                        # Check for cancellation
-
-- Normal if you have both Plex + Tautulli webhooks enabled                                        if _active_syncs.get(user_id, False):
-
-- Choose one or the other (Plex recommended)                                            logger.info(f"Sync cancelled by user {user_id}")
-
+                                        # Check for cancellation
+                                        if _active_syncs.get(user_id, False):
+                                            logger.info(f"Sync cancelled by user {user_id}")
                                             yield f'data: {{"status": "cancelled", "message": "Sync cancelled by user", "current": {synced_items}, "total": {total_items}}}\n\n'
-
----                                            _active_syncs.pop(user_id, None)
-
+                                            _active_syncs.pop(user_id, None)
                                             return
-
-## Summary                                        
-
+                                        
                                         synced_items += 1
-
-**Required for SmartPlex**:                                        
-
-- ✅ Plex webhook (watch history)                                        # Extract metadata
-
-- ✅ Sonarr webhook (TV library sync)                                        title = getattr(episode, 'title', 'Unknown')
-
-- ✅ Radarr webhook (movie library sync)                                        show_title = getattr(item, 'title', 'Unknown')
-
+                                        
+                                        # Extract metadata
+                                        title = getattr(episode, 'title', 'Unknown')
+                                        show_title = getattr(item, 'title', 'Unknown')
                                         season_title = getattr(episode, 'seasonTitle', f'Season {episode.seasonNumber}') if hasattr(episode, 'seasonNumber') else None
-
-**Optional**:                                        
-
-- Tautulli webhook (if you prefer over Plex)                                        # Extract IDs from show guids (episodes inherit show IDs)
-
-- Overseerr webhook (request tracking)                                        tmdb_id = None
-
+                                        
+                                        # Extract IDs from show guids (episodes inherit show IDs)
+                                        tmdb_id = None
                                         tvdb_id = None
-
-**Result**: Fully automated library that stays in sync without manual refreshes!                                        imdb_id = None
-
+                                        imdb_id = None
                                         
                                         for guid in getattr(item, 'guids', []):
                                             guid_id = guid.id
@@ -382,14 +210,6 @@ All webhooks are currently open (no authentication). For production:
                                         
                                         file_size_mb = round(file_size_bytes / (1024 * 1024), 2) if file_size_bytes > 0 else None
                                         
-                                        # Get Plex added_at timestamp and store in metadata
-                                        metadata = {}
-                                        if hasattr(episode, 'addedAt') and episode.addedAt:
-                                            try:
-                                                metadata['plex_added_at'] = episode.addedAt.isoformat()
-                                            except:
-                                                pass
-                                        
                                         # Upsert episode to database
                                         media_data = {
                                             'server_id': server_id,
@@ -399,7 +219,6 @@ All webhooks are currently open (no authentication). For production:
                                             'year': getattr(episode, 'year', None),
                                             'duration_ms': getattr(episode, 'duration', None),
                                             'file_size_bytes': file_size_bytes if file_size_bytes > 0 else None,
-                                            'metadata': metadata,
                                             'tmdb_id': tmdb_id,
                                             'tvdb_id': tvdb_id,
                                             'imdb_id': imdb_id
@@ -479,14 +298,6 @@ All webhooks are currently open (no authentication). For production:
                                 
                                 file_size_mb = round(file_size_bytes / (1024 * 1024), 2) if file_size_bytes > 0 else None
                                 
-                                # Get Plex added_at timestamp and store in metadata
-                                metadata = {}
-                                if hasattr(item, 'addedAt') and item.addedAt:
-                                    try:
-                                        metadata['plex_added_at'] = item.addedAt.isoformat()
-                                    except:
-                                        pass
-                                
                                 # Upsert to database
                                 media_data = {
                                     'server_id': server_id,
@@ -496,7 +307,6 @@ All webhooks are currently open (no authentication). For production:
                                     'year': getattr(item, 'year', None),
                                     'duration_ms': getattr(item, 'duration', None),
                                     'file_size_bytes': file_size_bytes if file_size_bytes > 0 else None,
-                                    'metadata': metadata,
                                     'tmdb_id': tmdb_id,
                                     'tvdb_id': tvdb_id,
                                     'imdb_id': imdb_id
@@ -707,14 +517,14 @@ async def get_storage_info(
     """
     
     try:
-        # Get ALL items from database (don't filter by file_size for count)
+        # Get storage from database (much faster than querying Plex)
         storage_query = supabase.table('media_items')\
             .select('file_size_bytes, type')\
+            .not_.is_('file_size_bytes', 'null')\
             .execute()
         
         total_size_bytes = 0
         total_items = 0
-        items_without_size = 0
         by_type = {}
         
         if storage_query.data:
@@ -722,11 +532,7 @@ async def get_storage_info(
                 size_bytes = item.get('file_size_bytes', 0) or 0
                 item_type = item.get('type', 'unknown')
                 
-                if size_bytes > 0:
-                    total_size_bytes += size_bytes
-                else:
-                    items_without_size += 1
-                
+                total_size_bytes += size_bytes
                 total_items += 1
                 
                 if item_type not in by_type:
@@ -772,7 +578,6 @@ async def get_storage_info(
         
         storage_info = {
             "total_items": total_items,
-            "items_without_size": items_without_size,
             "total_used_gb": total_used_gb,
             "total_used_tb": total_used_tb,
             "total_capacity_gb": total_capacity_gb,
@@ -782,7 +587,6 @@ async def get_storage_info(
             "by_type": by_type_formatted,
         }
         
-        logger.info(f"Storage info: {total_items} total items, {items_without_size} without size, {total_used_gb}GB used")
         return storage_info
     
     except Exception as e:
