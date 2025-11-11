@@ -344,3 +344,174 @@ async def get_inaccessible_files(
     except Exception as e:
         logger.error(f"Error fetching inaccessible files: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch inaccessible files: {str(e)}")
+
+
+class DeleteMediaRequest(BaseModel):
+    """Request to delete specific media items."""
+    media_item_ids: list[str] = Field(..., description="List of media item IDs to delete")
+    delete_from_filesystem: bool = Field(True, description="Whether to delete actual files (vs just marking inaccessible)")
+    cascade_to_arr: bool = Field(True, description="Whether to cascade deletion to Sonarr/Radarr")
+    reason: str = Field("manual_quality_cleanup", description="Reason for deletion")
+
+
+class DeleteMediaResponse(BaseModel):
+    """Response from media deletion."""
+    total_requested: int
+    deleted: int
+    failed: int
+    skipped: int
+    total_size_gb: float
+    details: list[dict]
+
+
+@router.post("/storage/delete-media", response_model=DeleteMediaResponse)
+async def delete_media_items(
+    request: DeleteMediaRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
+) -> DeleteMediaResponse:
+    """
+    Delete specific media items (used by quality dashboard for cleanup).
+    
+    This endpoint provides direct file deletion for quality-based cleanup.
+    Unlike deletion rules, this operates on specific items selected by admin.
+    
+    Args:
+        request: Delete request with media item IDs and options
+        
+    Returns:
+        Deletion results with success/failure counts
+        
+    Requires:
+        Admin role
+    """
+    # Require admin role
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin role required")
+    
+    try:
+        from app.services.cascade_deletion_service import CascadeDeletionService
+        
+        cascade_service = CascadeDeletionService(supabase)
+        
+        deleted_count = 0
+        failed_count = 0
+        skipped_count = 0
+        total_size_bytes = 0
+        details = []
+        
+        for media_item_id in request.media_item_ids:
+            try:
+                # Fetch media item
+                response = supabase.table("media_items")\
+                    .select("*")\
+                    .eq("id", media_item_id)\
+                    .single()\
+                    .execute()
+                
+                if not response.data:
+                    failed_count += 1
+                    details.append({
+                        "media_item_id": media_item_id,
+                        "status": "failed",
+                        "error": "Media item not found"
+                    })
+                    continue
+                
+                media_item = response.data
+                
+                # If not deleting from filesystem, just mark inaccessible
+                if not request.delete_from_filesystem:
+                    supabase.table("media_items")\
+                        .update({"accessible": False, "updated_at": datetime.now(timezone.utc).isoformat()})\
+                        .eq("id", media_item_id)\
+                        .execute()
+                    
+                    deleted_count += 1
+                    size_bytes = media_item.get("file_size_bytes", 0) or 0
+                    total_size_bytes += size_bytes
+                    
+                    details.append({
+                        "media_item_id": media_item_id,
+                        "title": media_item.get("title", "unknown"),
+                        "status": "marked_inaccessible",
+                        "size_gb": round(size_bytes / (1024**3), 2)
+                    })
+                    continue
+                
+                # Full cascade deletion
+                result = await cascade_service.delete_media_item(
+                    media_item=media_item,
+                    user_id=current_user["id"],
+                    deletion_rule_id=None,  # No rule for manual deletion
+                    deletion_reason=request.reason,
+                    dry_run=False
+                )
+                
+                if result["overall_status"] in ["completed", "partial"]:
+                    deleted_count += 1
+                    size_bytes = media_item.get("file_size_bytes", 0) or 0
+                    total_size_bytes += size_bytes
+                    
+                    details.append({
+                        "media_item_id": media_item_id,
+                        "title": media_item.get("title", "unknown"),
+                        "status": result["overall_status"],
+                        "size_gb": round(size_bytes / (1024**3), 2),
+                        "plex": result.get("plex", {}).get("success", False),
+                        "sonarr": result.get("sonarr", {}).get("success") if request.cascade_to_arr else None,
+                        "radarr": result.get("radarr", {}).get("success") if request.cascade_to_arr else None
+                    })
+                else:
+                    failed_count += 1
+                    details.append({
+                        "media_item_id": media_item_id,
+                        "title": media_item.get("title", "unknown"),
+                        "status": "failed",
+                        "error": result.get("error", "Unknown error")
+                    })
+                    
+            except Exception as e:
+                logger.error(f"Failed to delete media item {media_item_id}: {e}")
+                failed_count += 1
+                details.append({
+                    "media_item_id": media_item_id,
+                    "status": "failed",
+                    "error": str(e)
+                })
+        
+        # Log audit trail
+        try:
+            supabase.table("audit_log").insert({
+                "user_id": current_user["id"],
+                "action": "delete_media_items",
+                "resource_type": "media_items",
+                "resource_id": None,
+                "changes": {
+                    "requested_ids": request.media_item_ids,
+                    "deleted": deleted_count,
+                    "failed": failed_count,
+                    "total_size_gb": round(total_size_bytes / (1024**3), 2),
+                    "delete_from_filesystem": request.delete_from_filesystem,
+                    "cascade_to_arr": request.cascade_to_arr,
+                    "reason": request.reason
+                }
+            }).execute()
+        except Exception as audit_error:
+            logger.error(f"Failed to log deletion audit trail (non-fatal): {audit_error}")
+        
+        return DeleteMediaResponse(
+            total_requested=len(request.media_item_ids),
+            deleted=deleted_count,
+            failed=failed_count,
+            skipped=skipped_count,
+            total_size_gb=round(total_size_bytes / (1024**3), 2),
+            details=details
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to delete media items: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete media items: {str(e)}"
+        )

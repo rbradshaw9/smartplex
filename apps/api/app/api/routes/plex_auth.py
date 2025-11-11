@@ -165,14 +165,60 @@ async def plex_login(
                 print(f"❌ Database operation failed: {db_error}")
                 raise Exception(f"Failed to create/update user profile: {str(db_error)}")
             
-            # Step 4: Return credentials for frontend to establish Supabase session
+            # Step 4: Store Plex token in servers table (for webhooks and per-user operations)
+            print("💾 Storing Plex token in database...")
+            try:
+                # Find user's server (or create if doesn't exist)
+                server_response = supabase.table('servers').select('id').eq('user_id', user_id).execute()
+                
+                if server_response.data and len(server_response.data) > 0:
+                    # Update existing server with token
+                    server_id = server_response.data[0]['id']
+                    supabase.table('servers').update({
+                        'plex_token': credentials.authToken,
+                        'plex_token_last_validated_at': datetime.utcnow().isoformat()
+                    }).eq('id', server_id).execute()
+                    print(f"✅ Updated Plex token for server {server_id}")
+                    
+                    # Log token storage audit
+                    supabase.table('plex_token_audit').insert({
+                        'server_id': server_id,
+                        'user_id': user_id,
+                        'action': 'stored',
+                        'success': True
+                    }).execute()
+                else:
+                    print("⚠️ No server found for user - token will be stored when server is added")
+            except Exception as token_error:
+                print(f"⚠️ Failed to store Plex token (non-fatal): {token_error}")
+            
+            # Step 5: Return credentials for frontend to establish Supabase session
             print("🎫 Preparing session credentials...")
+            # Store token in servers table (fallback path)
+            try:
+                server_response = supabase.table('servers').select('id').eq('user_id', user_data['id']).execute()
+                if server_response.data and len(server_response.data) > 0:
+                    server_id = server_response.data[0]['id']
+                    supabase.table('servers').update({
+                        'plex_token': credentials.authToken,
+                        'plex_token_last_validated_at': datetime.utcnow().isoformat()
+                    }).eq('id', server_id).execute()
+                    
+                    supabase.table('plex_token_audit').insert({
+                        'server_id': server_id,
+                        'user_id': user_data['id'],
+                        'action': 'stored',
+                        'success': True
+                    }).execute()
+            except Exception as token_error:
+                print(f"⚠️ Failed to store Plex token (non-fatal): {token_error}")
+            
             expires_at = datetime.utcnow() + timedelta(hours=24)
             
             session_data = {
-                'user_id': user_id,
+                'user_id': user_data['id'],
                 'email': email,
-                'temp_password': user_temp_password,  # Frontend will use this to sign in
+                'temp_password': None,
                 'display_name': user_data.get('display_name'),
                 'plex_user_id': user_data.get('plex_user_id'),
                 'plex_token': credentials.authToken,
