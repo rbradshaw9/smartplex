@@ -196,9 +196,13 @@ async def stream_tautulli_sync(
         
         admin_user = user_result.data
         
+        # Debug logging
+        logger.info(f"User {user_response.user.id} role: {admin_user.get('role')}")
+        
         # Check admin role
         if admin_user.get('role') != 'admin':
-            raise HTTPException(status_code=403, detail="Admin access required")
+            logger.warning(f"User {user_response.user.id} denied access - role is '{admin_user.get('role')}', expected 'admin'")
+            raise HTTPException(status_code=403, detail=f"Admin access required. Your role: {admin_user.get('role')}")
             
     except HTTPException:
         raise
