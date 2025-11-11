@@ -170,12 +170,31 @@ async def debug_tautulli_sync(
             .limit(5)\
             .execute()
         
+        # Check if Tautulli integration exists
+        tautulli_result = supabase.table('integrations')\
+            .select('*')\
+            .eq('service', 'tautulli')\
+            .eq('user_id', admin_user['id'])\
+            .execute()
+        
+        tautulli_integration = None
+        if tautulli_result.data and len(tautulli_result.data) > 0:
+            tautulli_integration = {
+                "exists": True,
+                "name": tautulli_result.data[0].get('name'),
+                "url": tautulli_result.data[0].get('url'),
+                "status": tautulli_result.data[0].get('status'),
+                "last_sync": tautulli_result.data[0].get('last_sync_at')
+            }
+        else:
+            tautulli_integration = {"exists": False}
+        
         return {
             "total_items": total_items,
             "items_with_tautulli_data": items_with_data,
             "items_with_views": items_with_views,
             "percentage_synced": round((items_with_data / total_items * 100), 2) if total_items > 0 else 0,
-            "tautulli_integration_exists": None,  # TODO: check integrations table
+            "tautulli_integration": tautulli_integration,
             "sample_items_with_data": sample_with_data.data or [],
             "sample_items_without_data": sample_without_data.data or []
         }

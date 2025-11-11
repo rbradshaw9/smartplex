@@ -106,6 +106,21 @@ async def update_storage_capacity(
         raise HTTPException(status_code=403, detail="Admin access required")
     
     try:
+        # Validate capacity is greater than current usage
+        storage_query = supabase.table('media_items')\
+            .select('file_size_bytes')\
+            .not_.is_('file_size_bytes', 'null')\
+            .execute()
+        
+        total_size_bytes = sum(item.get('file_size_bytes', 0) or 0 for item in (storage_query.data or []))  # type: ignore
+        current_used_gb = round(total_size_bytes / (1024 * 1024 * 1024), 2)
+        
+        if config.total_gb < current_used_gb:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Storage capacity ({config.total_gb}GB) cannot be less than current usage ({current_used_gb}GB)"
+            )
+        
         config_data = {
             'key': 'storage_capacity',
             'value': config.model_dump(),
