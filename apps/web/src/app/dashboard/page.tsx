@@ -94,28 +94,14 @@ export default function DashboardPage() {
         userStats={mockUserStats}
         recommendations={recommendations}
       />
-      {/* Hidden Sentry test button - press Shift+Ctrl+S to trigger */}
+      {/* Visible Sentry test button - for testing only, remove later */}
       <button
         onClick={() => {
           throw new Error("Sentry Test Error - Button Clicked");
         }}
-        onKeyDown={(e) => {
-          if (e.shiftKey && e.ctrlKey && e.key === 'S') {
-            throw new Error("Sentry Test Error - Keyboard Shortcut");
-          }
-        }}
-        style={{ 
-          position: 'fixed', 
-          bottom: '10px', 
-          right: '10px', 
-          opacity: 0.01,
-          width: '50px',
-          height: '50px',
-          cursor: 'pointer'
-        }}
-        aria-label="Test Sentry"
+        className="fixed bottom-4 right-4 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg shadow-lg z-50 text-sm font-semibold"
       >
-        Test
+        🐛 Test Sentry
       </button>
     </>
   )

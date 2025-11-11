@@ -78,6 +78,17 @@
 - **Recommendation**: Add Plausible/PostHog after beta launch
 - Focus on feedback system for now
 
+### 🛠️ Admin Feedback Dashboard (TODO)
+**Status**: Needed for beta  
+- API endpoints exist (`/api/feedback`)
+- Can view in Supabase table directly
+- **TODO**: Create `/admin/feedback` page to:
+  - List all feedback submissions
+  - Filter by status/type/priority
+  - Update status and add admin notes
+  - View statistics
+- **Workaround**: Use Supabase table editor for now
+
 ---
 
 ## 🚀 Deployment Status
