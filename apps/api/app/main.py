@@ -24,7 +24,7 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from app.config import get_settings
-from app.api.routes import health, sync, ai, plex_auth, plex, plex_sync, integrations, admin_deletion, admin_tautulli, webhooks, system_config, feedback
+from app.api.routes import health, sync, ai, plex_auth, plex, plex_sync, integrations, admin_deletion, admin_tautulli, webhooks, system_config, feedback, analytics, watch_list
 from app.core.supabase import get_supabase_client
 from app.core.exceptions import SmartPlexException
 from app.core.logging import setup_logging, get_logger
@@ -159,6 +159,8 @@ app.include_router(admin_deletion.router, prefix="/api/admin/deletion", tags=["a
 app.include_router(admin_tautulli.router, prefix="/api/admin", tags=["admin", "tautulli"])
 app.include_router(system_config.router, prefix="/api/admin/system", tags=["admin", "system"])
 app.include_router(webhooks.router, prefix="/api/webhooks", tags=["webhooks"])
+app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
+app.include_router(watch_list.router, prefix="/api/watch-list", tags=["watch-list"])
 
 
 @app.get("/")
