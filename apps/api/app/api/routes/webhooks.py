@@ -103,18 +103,14 @@ async def trigger_plex_library_sync_background(
         
         server_data = server_result.data
         
-        # Get user's Plex token
-        user_result = supabase.table('users')\
-            .select('plex_token')\
-            .eq('id', user_id)\
-            .single()\
-            .execute()
-        
-        if not user_result.data or not user_result.data.get('plex_token'):
-            logger.error(f"No Plex token found for user {user_id}")
-            return
-        
-        plex_token = user_result.data['plex_token']
+        # TODO: Plex token is not stored in database - it's in frontend localStorage
+        # Webhooks are server-side and don't have access to user's token
+        # Need to implement a solution:
+        # 1. Store admin token in integrations table for server-side operations
+        # 2. Use server access token if available
+        # 3. Skip sync if no token available
+        logger.error(f"Plex token not available for webhook sync - requires token storage solution")
+        return
         
         # 2. Connect to Plex server using cached connection
         server = None

@@ -57,12 +57,15 @@ class PlexCollectionManager:
             
             server_data = server_result.data
             
-            # Get user's Plex token
-            user_result = self.supabase.table("users").select("plex_token").eq("id", user_id).single().execute()
-            if not user_result.data or not user_result.data.get('plex_token'):
-                return {"success": False, "error": "No Plex token found"}
-            
-            plex_token = user_result.data['plex_token']
+            # TODO: Plex token is not stored in database - it's in frontend localStorage
+            # This feature requires token to be passed as parameter or stored in integrations
+            # For now, skip Plex collection updates since token is not available
+            logger.warning("Plex token not available - collection update feature temporarily disabled")
+            return {
+                "success": False, 
+                "error": "Plex token not available in database. Collection feature requires frontend token to be passed as parameter.",
+                "skipped": True
+            }
             
             if dry_run:
                 return {
@@ -242,11 +245,13 @@ class PlexCollectionManager:
             
             server_data = server_result.data
             
-            user_result = self.supabase.table("users").select("plex_token").eq("id", user_id).single().execute()
-            if not user_result.data or not user_result.data.get('plex_token'):
-                return {"success": False, "error": "No Plex token found"}
-            
-            plex_token = user_result.data['plex_token']
+            # TODO: Plex token not stored in database - see update_leaving_soon_collection
+            logger.warning("Plex token not available - collection clear feature temporarily disabled")
+            return {
+                "success": False,
+                "error": "Plex token not available in database",
+                "skipped": True
+            }
             
             # Connect to server
             if server_data.get('preferred_connection_url'):

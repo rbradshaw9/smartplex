@@ -232,12 +232,18 @@ class CascadeDeletionService:
             
             server_data = server_result.data
             
-            # Get user's Plex token
-            user_result = self.supabase.table("users").select("plex_token").eq("id", user_id).single().execute()
-            if not user_result.data or not user_result.data.get('plex_token'):
-                return {"success": False, "error": "No Plex token found"}
-            
-            plex_token = user_result.data['plex_token']
+            # TODO: Plex token is not stored in database - it's in frontend localStorage
+            # For admin-initiated deletions, we need a different approach:
+            # 1. Store admin's token in integrations table, OR
+            # 2. Pass token as parameter from frontend, OR
+            # 3. Use Plex server admin credentials
+            # For now, skip Plex deletion (will still delete from Sonarr/Radarr/Overseerr)
+            logger.warning("Plex token not available - skipping Plex deletion (will delete from *arr services only)")
+            return {
+                "success": True, 
+                "message": "Plex token not available - deletion from *arr services will proceed, manual Plex cleanup required",
+                "skipped": True
+            }
             
             if dry_run:
                 return {
