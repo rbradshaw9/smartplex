@@ -217,19 +217,11 @@ async def sync_library_generator(
                                             'title': title,
                                             'type': 'episode',
                                             'grandparent_title': show_title,
-                                            'parent_title': season_title,
-                                            'season_number': getattr(episode, 'seasonNumber', None),
-                                            'episode_number': getattr(episode, 'episodeNumber', None),
                                             'year': getattr(episode, 'year', None),
-                                            'rating': getattr(episode, 'rating', None),
                                             'duration_ms': getattr(episode, 'duration', None),
-                                            'added_at': getattr(episode, 'addedAt', datetime.now(timezone.utc)).isoformat(),
-                                            'summary': getattr(episode, 'summary', None),
                                             'tmdb_id': tmdb_id,
                                             'tvdb_id': tvdb_id,
-                                            'imdb_id': imdb_id,
-                                            'file_size_mb': file_size_mb,
-                                            'genres': [g.tag for g in getattr(item, 'genres', [])]  # Use show genres
+                                            'imdb_id': imdb_id
                                         }
                                         
                                         try:
@@ -311,15 +303,10 @@ async def sync_library_generator(
                                     'title': title,
                                     'type': 'movie',
                                     'year': getattr(item, 'year', None),
-                                    'rating': getattr(item, 'rating', None),
                                     'duration_ms': getattr(item, 'duration', None),
-                                    'added_at': getattr(item, 'addedAt', datetime.now(timezone.utc)).isoformat(),
-                                    'summary': getattr(item, 'summary', None),
                                     'tmdb_id': tmdb_id,
                                     'tvdb_id': tvdb_id,
-                                    'imdb_id': imdb_id,
-                                    'file_size_mb': file_size_mb,
-                                    'genres': [g.tag for g in getattr(item, 'genres', [])]
+                                    'imdb_id': imdb_id
                                 }
                                 
                                 try:
