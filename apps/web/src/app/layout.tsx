@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     icon: '/favicon.svg',
   },
   other: {
-    'build-version': '3.0.1', // Static version - no Date.now() to avoid SSR mismatch
+    'build-version': '3.0.2', // Sentry fix deployed
   },
 }
 

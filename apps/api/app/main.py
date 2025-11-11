@@ -35,19 +35,19 @@ logger = get_logger("main")
 
 # Initialize Sentry for error tracking
 settings = get_settings()
-if settings.sentry_dsn:
-    sentry_sdk.init(
-        dsn=settings.sentry_dsn or "https://9352877a711f16edf148d59fd3d7900b@o4510303274926080.ingest.us.sentry.io/4510346730733568",
-        integrations=[
-            FastApiIntegration(),
-            StarletteIntegration(),
-        ],
-        traces_sample_rate=1.0,  # Adjust in production
-        environment=settings.environment,
-        send_default_pii=True,  # Capture request headers and IP for debugging
-        before_send=lambda event, hint: event if settings.sentry_dsn else None,
-    )
-    logger.info("🔔 Sentry error tracking initialized")
+# Always initialize with fallback DSN
+sentry_dsn = settings.sentry_dsn or "https://9352877a711f16edf148d59fd3d7900b@o4510303274926080.ingest.us.sentry.io/4510346730733568"
+sentry_sdk.init(
+    dsn=sentry_dsn,
+    integrations=[
+        FastApiIntegration(),
+        StarletteIntegration(),
+    ],
+    traces_sample_rate=1.0,  # Adjust in production
+    environment=settings.environment,
+    send_default_pii=True,  # Capture request headers and IP for debugging
+)
+logger.info(f"🔔 Sentry error tracking initialized: {sentry_dsn[:50]}...")
 
 # Suppress noisy PlexAPI connection logs
 logging.getLogger("plexapi").setLevel(logging.WARNING)
