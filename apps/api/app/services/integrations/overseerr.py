@@ -68,7 +68,8 @@ class OverseerrService(BaseIntegration):
         media_type: str,
         media_id: int,
         seasons: Optional[List[int]] = None,
-        is_4k: bool = False
+        is_4k: bool = False,
+        user_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Create a new media request.
@@ -78,6 +79,7 @@ class OverseerrService(BaseIntegration):
             media_id: TMDB ID of the media
             seasons: List of season numbers (for TV shows)
             is_4k: Whether to request 4K quality
+            user_id: Overseerr user ID to attribute the request to (optional)
             
         Returns:
             Created request information
@@ -90,6 +92,9 @@ class OverseerrService(BaseIntegration):
         
         if media_type == 'tv' and seasons:
             payload['seasons'] = seasons
+            
+        if user_id is not None:
+            payload['userId'] = user_id
         
         return await self._request('POST', '/api/v1/request', json=payload)
     

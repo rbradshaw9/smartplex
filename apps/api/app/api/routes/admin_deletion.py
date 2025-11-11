@@ -372,39 +372,55 @@ async def execute_deletion(
         total_size_mb = 0.0
         
         for candidate in candidates:
-            # Get full media item data from database
-            media_result = supabase.table("media_items")\
-                .select("*")\
-                .eq("id", candidate['id'])\
-                .single()\
-                .execute()
-            
-            if not media_result.data:
-                logger.warning(f"Media item {candidate['id']} not found in database")
+            try:
+                # Get full media item data from database
+                media_result = supabase.table("media_items")\
+                    .select("*")\
+                    .eq("id", candidate['id'])\
+                    .single()\
+                    .execute()
+                
+                if not media_result.data:
+                    logger.warning(f"Media item {candidate['id']} not found in database")
+                    failed_count += 1
+                    deletion_results.append({
+                        "media_item_id": candidate['id'],
+                        "error": "Media item not found in database",
+                        "overall_status": "failed"
+                    })
+                    continue
+                
+                media_item = media_result.data
+                
+                # Execute cascade deletion
+                result = await cascade_service.delete_media_item(
+                    media_item=media_item,
+                    user_id=admin_user["id"],
+                    deletion_rule_id=str(request.rule_id),
+                    deletion_reason=f"rule_{request.rule_id}",
+                    dry_run=request.dry_run
+                )
+                
+                deletion_results.append(result)
+                
+                if result["overall_status"] == "completed":
+                    deleted_count += 1
+                    total_size_mb += media_item.get('file_size_mb', 0) or 0
+                elif result["overall_status"] == "partial":
+                    deleted_count += 1  # Count partial as success since Plex deletion worked
+                    total_size_mb += media_item.get('file_size_mb', 0) or 0
+                else:
+                    failed_count += 1
+                    
+            except Exception as deletion_error:
+                logger.error(f"Error deleting candidate {candidate.get('id', 'unknown')}: {deletion_error}", exc_info=True)
                 failed_count += 1
-                continue
-            
-            media_item = media_result.data
-            
-            # Execute cascade deletion
-            result = await cascade_service.delete_media_item(
-                media_item=media_item,
-                user_id=admin_user["id"],
-                deletion_rule_id=str(request.rule_id),
-                deletion_reason=f"rule_{request.rule_id}",
-                dry_run=request.dry_run
-            )
-            
-            deletion_results.append(result)
-            
-            if result["overall_status"] == "completed":
-                deleted_count += 1
-                total_size_mb += media_item.get('file_size_mb', 0) or 0
-            elif result["overall_status"] == "partial":
-                deleted_count += 1  # Count partial as success since Plex deletion worked
-                total_size_mb += media_item.get('file_size_mb', 0) or 0
-            else:
-                failed_count += 1
+                deletion_results.append({
+                    "media_item_id": candidate.get('id', 'unknown'),
+                    "media_title": candidate.get('title', 'unknown'),
+                    "error": str(deletion_error),
+                    "overall_status": "failed"
+                })
         
         # Log audit trail
         try:

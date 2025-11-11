@@ -375,8 +375,12 @@ Type "DELETE" below to confirm:`
             eventSource.close()
             setSyncing(false)
             
-            // Reload storage info
+            // Reload storage info immediately and again after 2 seconds
+            // (sometimes database takes a moment to reflect all changes)
             loadStorageInfo()
+            setTimeout(() => {
+              loadStorageInfo()
+            }, 2000)
             
             // Clear message after 8 seconds
             setTimeout(() => {

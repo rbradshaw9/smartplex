@@ -429,6 +429,7 @@ class OverseerrRequestCreate(BaseModel):
     media_id: int = Field(..., description="TMDB ID")
     seasons: List[int] | None = Field(None, description="Season numbers for TV shows")
     is_4k: bool = Field(default=False, description="Request 4K quality")
+    overseerr_user_id: int | None = Field(None, description="Overseerr user ID (optional, will try to find by email if not provided)")
 
 
 @router.get("/overseerr/search")
@@ -528,13 +529,42 @@ async def create_overseerr_request(
             api_key=integration['api_key']
         )
         
+        # Try to find the user's Overseerr ID
+        overseerr_user_id = request_data.overseerr_user_id
+        
+        if not overseerr_user_id:
+            # Try to find user by email in Overseerr
+            try:
+                users_response = await overseerr.get_users()
+                if users_response and 'results' in users_response:
+                    # Find user by email match
+                    user_email = current_user.get('email', '').lower()
+                    for overseerr_user in users_response['results']:
+                        if overseerr_user.get('email', '').lower() == user_email:
+                            overseerr_user_id = overseerr_user.get('id')
+                            logger.info(f"Found Overseerr user ID {overseerr_user_id} for email {user_email}")
+                            break
+            except Exception as user_lookup_error:
+                logger.warning(f"Could not look up Overseerr user: {user_lookup_error}")
+        
         # Create the request
         request_result = await overseerr.create_request(
             media_type=request_data.media_type,
             media_id=request_data.media_id,
             seasons=request_data.seasons,
-            is_4k=request_data.is_4k
+            is_4k=request_data.is_4k,
+            user_id=overseerr_user_id
         )
+        
+        # If we found the user ID and didn't have it before, store it for future requests
+        if overseerr_user_id and not request_data.overseerr_user_id:
+            try:
+                supabase.table('users')\
+                    .update({'overseerr_user_id': overseerr_user_id})\
+                    .eq('id', current_user['id'])\
+                    .execute()
+            except Exception as update_error:
+                logger.warning(f"Could not store Overseerr user ID: {update_error}")
         
         return request_result
         
