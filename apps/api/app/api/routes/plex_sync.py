@@ -517,14 +517,14 @@ async def get_storage_info(
     """
     
     try:
-        # Get storage from database (much faster than querying Plex)
+        # Get ALL items from database (don't filter by file_size for count)
         storage_query = supabase.table('media_items')\
             .select('file_size_bytes, type')\
-            .not_.is_('file_size_bytes', 'null')\
             .execute()
         
         total_size_bytes = 0
         total_items = 0
+        items_without_size = 0
         by_type = {}
         
         if storage_query.data:
@@ -532,7 +532,11 @@ async def get_storage_info(
                 size_bytes = item.get('file_size_bytes', 0) or 0
                 item_type = item.get('type', 'unknown')
                 
-                total_size_bytes += size_bytes
+                if size_bytes > 0:
+                    total_size_bytes += size_bytes
+                else:
+                    items_without_size += 1
+                
                 total_items += 1
                 
                 if item_type not in by_type:
@@ -578,6 +582,7 @@ async def get_storage_info(
         
         storage_info = {
             "total_items": total_items,
+            "items_without_size": items_without_size,
             "total_used_gb": total_used_gb,
             "total_used_tb": total_used_tb,
             "total_capacity_gb": total_capacity_gb,
@@ -587,6 +592,7 @@ async def get_storage_info(
             "by_type": by_type_formatted,
         }
         
+        logger.info(f"Storage info: {total_items} total items, {items_without_size} without size, {total_used_gb}GB used")
         return storage_info
     
     except Exception as e:

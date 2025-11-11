@@ -16,6 +16,7 @@ from app.core.supabase import get_supabase_client, require_admin
 from app.core.logging import get_logger
 from app.services.deletion_service import DeletionService
 from app.services.cascade_deletion_service import CascadeDeletionService
+from app.services.plex_collections import PlexCollectionManager
 
 router = APIRouter()
 logger = get_logger("admin.deletion")
@@ -73,6 +74,7 @@ class ScanRequest(BaseModel):
     """Request to scan for deletion candidates."""
     rule_id: str
     dry_run: bool = True
+    update_plex_collection: bool = True  # Auto-update "Leaving Soon" collection
 
 
 class ExecuteDeletionRequest(BaseModel):
@@ -302,10 +304,38 @@ async def scan_for_candidates(
         
         logger.info(f"Scanned for candidates using rule {request.rule_id}: found {len(candidates)} items")
         
+        # Update Plex "Leaving Soon" collection if requested
+        collection_result = None
+        if request.update_plex_collection and len(candidates) > 0:
+            try:
+                # Get user's server
+                server_result = supabase.table("servers")\
+                    .select("id")\
+                    .eq("user_id", admin_user["id"])\
+                    .limit(1)\
+                    .execute()
+                
+                if server_result.data and len(server_result.data) > 0:
+                    server_id = server_result.data[0]["id"]
+                    
+                    collection_manager = PlexCollectionManager(supabase)
+                    collection_result = await collection_manager.update_leaving_soon_collection(
+                        server_id=server_id,
+                        user_id=admin_user["id"],
+                        candidates=candidates,
+                        dry_run=False
+                    )
+                    
+                    logger.info(f"Updated Plex collection: {collection_result}")
+            except Exception as coll_error:
+                logger.error(f"Failed to update Plex collection (non-fatal): {coll_error}")
+                collection_result = {"success": False, "error": str(coll_error)}
+        
         return {
             "rule_id": request.rule_id,
             "total_candidates": len(candidates),
-            "candidates": candidates
+            "candidates": candidates,
+            "plex_collection": collection_result
         }
     except ValueError as e:
         raise HTTPException(
