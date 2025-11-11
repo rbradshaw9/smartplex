@@ -216,7 +216,6 @@ async def sync_library_generator(
                                             'plex_id': str(episode.ratingKey),
                                             'title': title,
                                             'type': 'episode',
-                                            'grandparent_title': show_title,
                                             'year': getattr(episode, 'year', None),
                                             'duration_ms': getattr(episode, 'duration', None),
                                             'file_size_bytes': file_size_bytes if file_size_bytes > 0 else None,
