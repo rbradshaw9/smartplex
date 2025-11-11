@@ -432,7 +432,7 @@ export default function IntegrationsPage() {
         )}
 
         {/* Tautulli Data Sync Section */}
-        {integrations.some(i => i.service === 'tautulli' && i.enabled) && (
+        {integrations.some(i => i.service === 'tautulli' && i.status === 'active') && (
           <div className="bg-slate-800 rounded-lg p-6 mt-6">
             <h3 className="text-xl font-semibold mb-4">Tautulli Watch History Sync</h3>
             <p className="text-slate-400 text-sm mb-4">
