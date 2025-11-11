@@ -88,21 +88,10 @@ export default function DashboardPage() {
   }
 
   return (
-    <>
-      <Dashboard 
-        user={user} 
-        userStats={mockUserStats}
-        recommendations={recommendations}
-      />
-      {/* Visible Sentry test button - for testing only, remove later */}
-      <button
-        onClick={() => {
-          throw new Error("Sentry Test Error - Button Clicked");
-        }}
-        className="fixed bottom-4 right-4 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg shadow-lg z-50 text-sm font-semibold"
-      >
-        🐛 Test Sentry
-      </button>
-    </>
+    <Dashboard 
+      user={user} 
+      userStats={mockUserStats}
+      recommendations={recommendations}
+    />
   )
 }
