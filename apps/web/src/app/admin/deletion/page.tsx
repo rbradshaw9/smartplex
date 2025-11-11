@@ -762,7 +762,9 @@ Type "DELETE" below to confirm:`
       .filter(c => c.type === 'episode' && c.parent_title === showName)
       .map(c => c.id)
     
-    setSelectedCandidates(new Set([...selectedCandidates, ...showEpisodes]))
+    const newSelected = new Set(selectedCandidates)
+    showEpisodes.forEach(id => newSelected.add(id))
+    setSelectedCandidates(newSelected)
   }
 
   const deselectAllFromShow = (showName: string) => {
