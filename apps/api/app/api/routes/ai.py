@@ -374,8 +374,52 @@ async def get_recommendations(
                     "favorite_genres": []  # Could be derived from liked_items
                 }
                 
+                # Get all media items in library to filter out
+                media_items_result = supabase.table("media_items")\
+                    .select("title, type, year, tmdb_id, imdb_id")\
+                    .execute()
+                
+                existing_titles = set()
+                existing_tmdb_ids = set()
+                existing_imdb_ids = set()
+                if media_items_result.data:
+                    for item in media_items_result.data:
+                        if item.get('title'):
+                            existing_titles.add(item['title'].lower())
+                        if item.get('tmdb_id'):
+                            existing_tmdb_ids.add(str(item['tmdb_id']))
+                        if item.get('imdb_id'):
+                            existing_imdb_ids.add(str(item['imdb_id']))
+                
+                user_context["existing_library"] = {
+                    "titles": list(existing_titles),
+                    "tmdb_ids": list(existing_tmdb_ids),
+                    "imdb_ids": list(existing_imdb_ids)
+                }
+                
                 # Get AI recommendations based on history
-                recommendations = await ai_service.generate_recommendations(user_context, count=limit)
+                recommendations = await ai_service.generate_recommendations(user_context, count=limit * 3)  # Request more to account for filtering
+                
+                # Filter out items already in library
+                filtered_recommendations = []
+                for rec in recommendations:
+                    rec_title = rec.get('title', '').lower()
+                    rec_tmdb = str(rec.get('tmdb_id', ''))
+                    rec_imdb = str(rec.get('imdb_id', ''))
+                    
+                    # Skip if already in library
+                    if rec_title in existing_titles:
+                        continue
+                    if rec_tmdb and rec_tmdb in existing_tmdb_ids:
+                        continue
+                    if rec_imdb and rec_imdb in existing_imdb_ids:
+                        continue
+                    
+                    filtered_recommendations.append(rec)
+                    if len(filtered_recommendations) >= limit:
+                        break
+                
+                recommendations = filtered_recommendations
             except Exception as e:
                 print(f"AI recommendations failed: {e}, falling back to generic")
                 recommendations = []

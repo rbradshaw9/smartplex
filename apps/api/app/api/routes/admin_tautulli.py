@@ -5,13 +5,16 @@ Requires admin role for all endpoints.
 """
 
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, AsyncGenerator
+import json
+import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from supabase import Client
 
-from app.core.supabase import get_supabase_client, require_admin
+from app.core.supabase import get_supabase_client, require_admin, get_user_from_token
 from app.core.logging import get_logger
 from app.services.tautulli_sync import TautulliSyncService
 from app.services.integrations.tautulli import TautulliService
@@ -103,24 +106,30 @@ async def trigger_tautulli_sync(
         )
         
         # Log sync to database for history
-        sync_record = {
-            "user_id": admin_user["id"],
-            "sync_type": "tautulli_aggregated_stats",
-            "status": "completed" if sync_stats["success"] else "failed",
-            "items_processed": sync_stats["history_items_fetched"],
-            "items_updated": sync_stats["media_items_updated"],
-            "items_added": sync_stats.get("media_items_created", 0),
-            "items_removed": 0,
-            "started_at": sync_stats["started_at"],
-            "completed_at": sync_stats["completed_at"],
-            "metadata": {
-                "days_back": request.days_back,
-                "batch_size": request.batch_size,
-                "errors": sync_stats["errors"]
+        # Get server_id from integration
+        server_id = integration.get("server_id")
+        if not server_id:
+            logger.warning("Integration missing server_id, skipping sync history log")
+        else:
+            sync_record = {
+                "user_id": admin_user["id"],
+                "server_id": server_id,
+                "sync_type": "tautulli_aggregated_stats",
+                "status": "completed" if sync_stats["success"] else "failed",
+                "items_processed": sync_stats["history_items_fetched"],
+                "items_updated": sync_stats["media_items_updated"],
+                "items_added": sync_stats.get("media_items_created", 0),
+                "items_removed": 0,
+                "started_at": sync_stats["started_at"],
+                "completed_at": sync_stats["completed_at"],
+                "metadata": {
+                    "days_back": request.days_back,
+                    "batch_size": request.batch_size,
+                    "errors": sync_stats["errors"]
+                }
             }
-        }
-        
-        supabase.table("sync_history").insert(sync_record).execute()
+            
+            supabase.table("sync_history").insert(sync_record).execute()
         
         message = f"Successfully synced {sync_stats['history_items_fetched']} history items"
         if sync_stats["errors"]:

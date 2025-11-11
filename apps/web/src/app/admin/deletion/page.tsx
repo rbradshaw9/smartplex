@@ -484,10 +484,23 @@ Type "DELETE" below to confirm:`
   async function loadStorageInfo() {
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
+      if (!session) {
+        console.warn('No session, skipping storage info load')
+        return
+      }
 
       const plexToken = localStorage.getItem('plex_token')
-      if (!plexToken) return
+      if (!plexToken) {
+        console.warn('No plex_token in localStorage, skipping storage info load')
+        // Set empty storage info so page doesn't hang
+        setStorageInfo({
+          total_items: 0,
+          total_used_gb: 0,
+          total_used_tb: 0,
+          capacity_configured: false
+        })
+        return
+      }
 
       // Add timestamp to bust any caching
       const timestamp = Date.now()
@@ -504,9 +517,25 @@ Type "DELETE" below to confirm:`
       if (response.ok) {
         const data = await response.json()
         setStorageInfo(data)
+      } else {
+        console.error('Storage info request failed:', response.status)
+        // Set empty storage info on failure
+        setStorageInfo({
+          total_items: 0,
+          total_used_gb: 0,
+          total_used_tb: 0,
+          capacity_configured: false
+        })
       }
     } catch (err) {
       console.error('Failed to load storage info:', err)
+      // Set empty storage info on error so page doesn't hang
+      setStorageInfo({
+        total_items: 0,
+        total_used_gb: 0,
+        total_used_tb: 0,
+        capacity_configured: false
+      })
     }
   }
 
