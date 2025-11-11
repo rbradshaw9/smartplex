@@ -424,7 +424,11 @@ async def get_overseerr_status(
     supabase: Client = Depends(get_supabase_client)
 ):
     """
-    Check if user has an active Overseerr integration.
+    Check if user has access to a server with an active Overseerr integration.
+    
+    This checks:
+    1. User's server memberships (via server_members table)
+    2. Overseerr integrations on those servers (owned by server admin)
     
     Use this to determine if request buttons should be shown in the UI.
     
@@ -436,21 +440,48 @@ async def get_overseerr_status(
         Integration status
     """
     try:
+        from app.core.server_membership import get_user_primary_server, get_server_admin
+        
+        # Get user's primary server
+        server = await get_user_primary_server(supabase, current_user['id'])
+        
+        if not server:
+            logger.info(f"User {current_user['id']} has no active server memberships")
+            return {"available": False, "integration": None, "reason": "no_server"}
+        
+        # Get the server admin (who owns the integrations)
+        admin_id = await get_server_admin(supabase, server['id'])
+        
+        if not admin_id:
+            logger.warning(f"Could not find admin for server {server['id']}")
+            return {"available": False, "integration": None, "reason": "no_admin"}
+        
+        # Check if the server admin has an active Overseerr integration
         result = supabase.table('integrations')\
-            .select('id, name, status')\
-            .eq('user_id', current_user['id'])\
+            .select('id, name, status, server_id')\
+            .eq('user_id', admin_id)\
             .eq('service', 'overseerr')\
             .eq('status', 'active')\
             .limit(1)\
             .execute()
         
-        return {
-            "available": bool(result.data),
-            "integration": result.data[0] if result.data else None
-        }
+        if result.data:
+            logger.info(f"User {current_user['id']} has Overseerr access via server {server['name']}")
+            return {
+                "available": True,
+                "integration": result.data[0],
+                "server": {
+                    "id": server['id'],
+                    "name": server['name']
+                }
+            }
+        else:
+            logger.info(f"Server {server['name']} has no active Overseerr integration")
+            return {"available": False, "integration": None, "reason": "no_integration"}
+        
     except Exception as e:
         logger.error(f"Error checking Overseerr status: {e}")
-        return {"available": False, "integration": None}
+        return {"available": False, "integration": None, "error": str(e)}
 
 
 class OverseerrSearchRequest(BaseModel):
@@ -572,19 +603,41 @@ async def create_overseerr_request(
     """
     Create a media request in Overseerr.
     
+    Uses user's primary server's Overseerr integration (owned by server admin).
+    
     Args:
         request_data: Request details
         current_user: Authenticated user
         supabase: Database client
         
     Returns:
-        Created request information
+        Created request information including which server handled it
     """
     try:
-        # Get user's Overseerr integration
+        from app.core.server_membership import get_user_primary_server, get_server_admin
+        
+        # Get user's primary server
+        server = await get_user_primary_server(supabase, current_user['id'])
+        
+        if not server:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No server access found. Please ask your server admin to grant you access."
+            )
+        
+        # Get the server admin (who owns the integrations)
+        admin_id = await get_server_admin(supabase, server['id'])
+        
+        if not admin_id:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Could not identify server administrator."
+            )
+        
+        # Get the server admin's Overseerr integration
         result = supabase.table('integrations')\
             .select('*')\
-            .eq('user_id', current_user['id'])\
+            .eq('user_id', admin_id)\
             .eq('service', 'overseerr')\
             .eq('status', 'active')\
             .limit(1)\
@@ -593,7 +646,7 @@ async def create_overseerr_request(
         if not result.data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="No active Overseerr integration found. Please configure Overseerr in admin settings."
+                detail=f"Server '{server['name']}' does not have Overseerr configured. Please ask your server admin to set up Overseerr."
             )
         
         integration = result.data[0]
@@ -675,7 +728,14 @@ async def create_overseerr_request(
         except Exception as log_error:
             logger.warning(f"Could not log Overseerr request: {log_error}")
         
-        return request_result
+        # Return request result with server context
+        return {
+            **request_result,
+            "server": {
+                "id": server['id'],
+                "name": server['name']
+            }
+        }
         
     except HTTPException:
         raise

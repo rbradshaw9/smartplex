@@ -25,6 +25,7 @@ export function Recommendations({ recommendations, onReload, isLoading = false }
   const [requestedIndices, setRequestedIndices] = useState<Set<number>>(new Set())
   const [visibleCount, setVisibleCount] = useState(5)
   const [overseerrAvailable, setOverseerrAvailable] = useState<boolean | null>(null)
+  const [serverName, setServerName] = useState<string>('')
   const supabase = createClientComponentClient<Database>()
   
   // Check if Overseerr integration is available
@@ -46,6 +47,9 @@ export function Recommendations({ recommendations, onReload, isLoading = false }
         if (response.ok) {
           const data = await response.json()
           setOverseerrAvailable(data.available)
+          if (data.server?.name) {
+            setServerName(data.server.name)
+          }
         }
       } catch (error) {
         console.error('Failed to check Overseerr status:', error)
@@ -255,30 +259,36 @@ export function Recommendations({ recommendations, onReload, isLoading = false }
                     <p className="text-slate-400 text-sm mt-2">{item.reason}</p>
                   </div>
                   {overseerrAvailable === true && (
-                    <button 
-                      onClick={() => handleRequest(item, index)}
-                      disabled={requestingIndex === index || requestedIndices.has(index)}
-                      className={`px-4 py-2 rounded-lg text-sm transition-colors flex-shrink-0 ${
-                        requestedIndices.has(index)
-                          ? 'bg-green-600 text-white cursor-default'
-                          : requestingIndex === index
-                          ? 'bg-blue-800 text-white cursor-wait'
-                          : 'bg-blue-600 hover:bg-blue-700 text-white'
-                      }`}
-                    >
-                      {requestedIndices.has(index) ? (
-                        <>✓ Requested</>
-                      ) : requestingIndex === index ? (
-                        <>
-                          <svg className="animate-spin inline h-4 w-4" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                          </svg>
-                        </>
-                      ) : (
-                        'Request'
+                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                      <button 
+                        onClick={() => handleRequest(item, index)}
+                        disabled={requestingIndex === index || requestedIndices.has(index)}
+                        className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                          requestedIndices.has(index)
+                            ? 'bg-green-600 text-white cursor-default'
+                            : requestingIndex === index
+                            ? 'bg-blue-800 text-white cursor-wait'
+                            : 'bg-blue-600 hover:bg-blue-700 text-white'
+                        }`}
+                        title={serverName ? `This will request to ${serverName}'s library` : 'Request media'}
+                      >
+                        {requestedIndices.has(index) ? (
+                          <>✓ Requested</>
+                        ) : requestingIndex === index ? (
+                          <>
+                            <svg className="animate-spin inline h-4 w-4" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                          </>
+                        ) : (
+                          'Request'
+                        )}
+                      </button>
+                      {serverName && (
+                        <span className="text-xs text-slate-500">→ {serverName}</span>
                       )}
-                    </button>
+                    </div>
                   )}
                   {overseerrAvailable === false && (
                     <div className="text-xs text-slate-500 text-right flex-shrink-0">
