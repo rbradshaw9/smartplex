@@ -197,7 +197,7 @@ async def stream_tautulli_sync(
         admin_user = user_result.data
         
         # Check admin role
-        if not admin_user.get('is_admin'):
+        if admin_user.get('role') != 'admin':
             raise HTTPException(status_code=403, detail="Admin access required")
             
     except HTTPException:
