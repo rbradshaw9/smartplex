@@ -218,7 +218,7 @@ async def plex_login(
             session_data = {
                 'user_id': user_data['id'],
                 'email': email,
-                'temp_password': None,
+                'temp_password': user_temp_password,  # Fixed: was None, now uses the generated password
                 'display_name': user_data.get('display_name'),
                 'plex_user_id': user_data.get('plex_user_id'),
                 'plex_token': credentials.authToken,
