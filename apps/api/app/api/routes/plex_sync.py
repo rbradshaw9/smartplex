@@ -540,13 +540,16 @@ async def get_storage_info(
     
     try:
         # Get storage from database (much faster than querying Plex)
+        # Use count='exact' to get total count and set a high limit to get all items
+        # Supabase default limit is 1000, so we need to explicitly set a higher limit
         storage_query = supabase.table('media_items')\
-            .select('file_size_bytes, type')\
+            .select('file_size_bytes, type', count='exact')\
             .not_.is_('file_size_bytes', 'null')\
+            .limit(100000)\
             .execute()
         
         total_size_bytes = 0
-        total_items = 0
+        total_items = storage_query.count or 0  # Use the count from query
         by_type = {}
         
         if storage_query.data:
