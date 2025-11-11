@@ -361,7 +361,7 @@ class CascadeDeletionService:
                 )
                 
                 if response.status_code != 200:
-                    return {"success": False, "error": f"Sonarr API error: {response.status_code}"}
+                    return {"success": False, "error": f"Sonarr API error: {response.status_code}", "skipped": False}
                 
                 series_list = response.json()
                 
@@ -382,13 +382,13 @@ class CascadeDeletionService:
                 
                 if delete_response.status_code in [200, 204]:
                     logger.info(f"✅ Successfully removed from Sonarr: {media_item['title']}")
-                    return {"success": True, "message": "Removed from Sonarr"}
+                    return {"success": True, "message": "Removed from Sonarr", "skipped": False}
                 else:
-                    return {"success": False, "error": f"Sonarr delete failed: {delete_response.status_code}"}
+                    return {"success": False, "error": f"Sonarr delete failed: {delete_response.status_code}", "skipped": False}
             
         except Exception as e:
             logger.error(f"Sonarr deletion error: {e}", exc_info=True)
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": str(e), "skipped": False}
     
     async def _delete_from_radarr(
         self,
@@ -450,7 +450,7 @@ class CascadeDeletionService:
                 )
                 
                 if response.status_code != 200:
-                    return {"success": False, "error": f"Radarr API error: {response.status_code}"}
+                    return {"success": False, "error": f"Radarr API error: {response.status_code}", "skipped": False}
                 
                 movies = response.json()
                 
@@ -471,13 +471,13 @@ class CascadeDeletionService:
                 
                 if delete_response.status_code in [200, 204]:
                     logger.info(f"✅ Successfully removed from Radarr: {media_item['title']}")
-                    return {"success": True, "message": "Removed from Radarr"}
+                    return {"success": True, "message": "Removed from Radarr", "skipped": False}
                 else:
-                    return {"success": False, "error": f"Radarr delete failed: {delete_response.status_code}"}
+                    return {"success": False, "error": f"Radarr delete failed: {delete_response.status_code}", "skipped": False}
             
         except Exception as e:
             logger.error(f"Radarr deletion error: {e}", exc_info=True)
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": str(e), "skipped": False}
     
     async def _delete_from_overseerr(
         self,
@@ -563,10 +563,10 @@ class CascadeDeletionService:
                 
                 if deleted_count > 0:
                     logger.info(f"✅ Removed {deleted_count} request(s) from Overseerr: {media_item['title']}")
-                    return {"success": True, "message": f"Removed {deleted_count} requests"}
+                    return {"success": True, "message": f"Removed {deleted_count} requests", "skipped": False}
                 else:
                     return {"success": True, "message": "No requests to remove", "skipped": True}
             
         except Exception as e:
             logger.error(f"Overseerr deletion error: {e}", exc_info=True)
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": str(e), "skipped": False}
