@@ -48,16 +48,22 @@ The backend Sentry SDK is already installed and configured with the DSN.
 SENTRY_DSN=https://9352877a711f16edf148d59fd3d7900b@o4510303274926080.ingest.us.sentry.io/4510346730733568
 ```
 
-### 3. Deploy to Railway
+### 3. Deploy to Production
 
 The DSNs are **hardcoded in the code** as fallback values, so Sentry works out of the box.
 
-**Optional:** To override the DSN in Railway:
+**Backend (Railway):**
 1. Go to Railway dashboard
-2. Select your project
+2. Select your API service
 3. Click on "Variables" tab
-4. Add `SENTRY_DSN` for the API service
-5. Add `NEXT_PUBLIC_SENTRY_DSN` for the web service
+4. Add `SENTRY_DSN` (optional override)
+
+**Frontend (Vercel):**
+1. Go to Vercel dashboard
+2. Select your web project
+3. Go to Settings → Environment Variables
+4. Add `NEXT_PUBLIC_SENTRY_DSN` for all environments (Production, Preview, Development)
+5. Redeploy to apply the variable
 
 ## Features
 
