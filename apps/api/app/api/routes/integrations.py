@@ -418,6 +418,41 @@ async def get_integration_health(
 # Overseerr-specific endpoints
 # ============================================
 
+@router.get("/overseerr/status")
+async def get_overseerr_status(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
+):
+    """
+    Check if user has an active Overseerr integration.
+    
+    Use this to determine if request buttons should be shown in the UI.
+    
+    Args:
+        current_user: Authenticated user
+        supabase: Database client
+        
+    Returns:
+        Integration status
+    """
+    try:
+        result = supabase.table('integrations')\
+            .select('id, name, status')\
+            .eq('user_id', current_user['id'])\
+            .eq('service', 'overseerr')\
+            .eq('status', 'active')\
+            .limit(1)\
+            .execute()
+        
+        return {
+            "available": bool(result.data),
+            "integration": result.data[0] if result.data else None
+        }
+    except Exception as e:
+        logger.error(f"Error checking Overseerr status: {e}")
+        return {"available": False, "integration": None}
+
+
 class OverseerrSearchRequest(BaseModel):
     """Request model for Overseerr search."""
     query: str = Field(..., min_length=1, description="Search query")
@@ -582,6 +617,25 @@ async def create_overseerr_request(
                             overseerr_user_id = overseerr_user.get('id')
                             logger.info(f"Found Overseerr user ID {overseerr_user_id} for email {user_email}")
                             break
+                    
+                    # If user not found, trigger Plex user import
+                    if not overseerr_user_id:
+                        logger.info(f"User {user_email} not found in Overseerr, triggering Plex user import")
+                        try:
+                            import_result = await overseerr.import_plex_users()
+                            logger.info(f"Plex user import result: {import_result}")
+                            
+                            # Try finding the user again after import
+                            users_response = await overseerr.get_users()
+                            if users_response and 'results' in users_response:
+                                for overseerr_user in users_response['results']:
+                                    if overseerr_user.get('email', '').lower() == user_email:
+                                        overseerr_user_id = overseerr_user.get('id')
+                                        logger.info(f"Found Overseerr user ID {overseerr_user_id} after import")
+                                        break
+                        except Exception as import_error:
+                            logger.warning(f"Could not import Plex users to Overseerr: {import_error}")
+                            # Continue anyway - request will be attributed to admin
             except Exception as user_lookup_error:
                 logger.warning(f"Could not look up Overseerr user: {user_lookup_error}")
         

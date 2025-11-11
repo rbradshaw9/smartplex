@@ -229,3 +229,15 @@ class OverseerrService(BaseIntegration):
             Settings configuration
         """
         return await self._request('GET', '/api/v1/settings/main')
+    
+    async def import_plex_users(self) -> Dict[str, Any]:
+        """
+        Trigger Overseerr to import users from Plex.
+        
+        This requires admin-level API key and will sync all Plex users
+        to Overseerr, creating accounts for any that don't exist yet.
+        
+        Returns:
+            Import results
+        """
+        return await self._request('POST', '/api/v1/user/import-from-plex')
