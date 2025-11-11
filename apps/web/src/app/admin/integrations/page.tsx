@@ -571,7 +571,7 @@ export default function IntegrationsPage() {
               </div>
             )}
             
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <button
                 onClick={() => syncTautulliData(30)}
                 disabled={syncingTautulli}
@@ -592,6 +592,13 @@ export default function IntegrationsPage() {
                 className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:cursor-not-allowed px-4 py-2 rounded text-sm font-medium transition-colors"
               >
                 {syncingTautulli ? 'Syncing...' : 'Sync Last Year'}
+              </button>
+              <button
+                onClick={() => syncTautulliData(0)}
+                disabled={syncingTautulli}
+                className="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-800 disabled:cursor-not-allowed px-4 py-2 rounded text-sm font-medium transition-colors"
+              >
+                {syncingTautulli ? 'Syncing...' : 'Sync All History'}
               </button>
             </div>
           </div>

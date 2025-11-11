@@ -5,7 +5,7 @@ Aggregates watch history from Tautulli across ALL Plex users and updates media_i
 with server-wide statistics for accurate deletion decisions.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional
 from collections import defaultdict
 
@@ -48,7 +48,10 @@ class TautulliSyncService:
         Returns:
             Dict with sync statistics
         """
-        logger.info(f"Starting Tautulli sync for last {days_back} days")
+        if days_back == 0:
+            logger.info(f"Starting Tautulli sync for ALL history")
+        else:
+            logger.info(f"Starting Tautulli sync for last {days_back} days")
         
         stats = {
             "started_at": datetime.now(timezone.utc).isoformat(),
@@ -57,6 +60,13 @@ class TautulliSyncService:
             "media_items_created": 0,
             "errors": [],
         }
+        
+        # Calculate cutoff timestamp if filtering by days
+        cutoff_timestamp = None
+        if days_back > 0:
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_back)
+            cutoff_timestamp = int(cutoff_date.timestamp())
+            logger.info(f"Filtering history after timestamp: {cutoff_timestamp} ({cutoff_date.isoformat()})")
         
         try:
             # Fetch watch history from Tautulli
@@ -78,8 +88,21 @@ class TautulliSyncService:
                     if not history_batch or len(history_batch) == 0:
                         break
                     
-                    all_history.extend(history_batch)
-                    stats["history_items_fetched"] += len(history_batch)
+                    # Filter by date if cutoff_timestamp is set
+                    if cutoff_timestamp:
+                        filtered_batch = [
+                            item for item in history_batch 
+                            if item.get('stopped') and item.get('stopped') >= cutoff_timestamp
+                        ]
+                        # If all items in this batch are older than cutoff, we're done
+                        if len(filtered_batch) == 0:
+                            logger.info(f"Reached cutoff date at offset {offset}, stopping pagination")
+                            break
+                        all_history.extend(filtered_batch)
+                        stats["history_items_fetched"] += len(filtered_batch)
+                    else:
+                        all_history.extend(history_batch)
+                        stats["history_items_fetched"] += len(history_batch)
                     
                     # Break if we got less than batch_size (last page)
                     if len(history_batch) < batch_size:

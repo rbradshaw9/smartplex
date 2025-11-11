@@ -25,7 +25,7 @@ logger = get_logger("admin.tautulli_sync")
 
 class TautulliSyncRequest(BaseModel):
     """Request to trigger Tautulli sync."""
-    days_back: int = Field(default=90, ge=1, le=365, description="Number of days of history to sync")
+    days_back: int = Field(default=90, ge=0, le=7300, description="Number of days of history to sync (0 = all history)")
     batch_size: int = Field(default=100, ge=10, le=500, description="Items per API call")
 
 
@@ -160,7 +160,7 @@ async def trigger_tautulli_sync(
 
 @router.get("/sync/tautulli/stream")
 async def stream_tautulli_sync(
-    days_back: int = Query(default=90, ge=1, le=365, description="Number of days of history to sync"),
+    days_back: int = Query(default=90, ge=0, le=7300, description="Number of days of history to sync (0 = all history)"),
     auth_token: str = Query(..., description="Supabase auth token for SSE"),
     supabase: Client = Depends(get_supabase_client)
 ):
