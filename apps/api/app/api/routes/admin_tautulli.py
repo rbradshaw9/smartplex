@@ -158,6 +158,163 @@ async def trigger_tautulli_sync(
         )
 
 
+@router.get("/sync/tautulli/stream")
+async def stream_tautulli_sync(
+    days_back: int = Query(default=90, ge=1, le=365, description="Number of days of history to sync"),
+    admin_user: Dict[str, Any] = Depends(require_admin),
+    supabase: Client = Depends(get_supabase_client)
+):
+    """
+    Stream Tautulli sync progress with Server-Sent Events (SSE).
+    
+    Similar to Plex sync streaming, this endpoint provides real-time
+    progress updates during Tautulli history synchronization.
+    
+    **Requires admin role.**
+    
+    Event format:
+    - status: "connecting", "syncing", "complete", "error"
+    - current: number of items processed
+    - total: estimated total items
+    - message: status message
+    - eta_seconds: estimated time remaining
+    """
+    
+    async def event_generator() -> AsyncGenerator[str, None]:
+        try:
+            # Send connecting status
+            yield f"data: {json.dumps({'status': 'connecting', 'message': 'Connecting to Tautulli...'})}\n\n"
+            await asyncio.sleep(0.1)
+            
+            # Get Tautulli integration
+            integration_response = supabase.table("integrations")\
+                .select("*")\
+                .eq("service", "tautulli")\
+                .eq("status", "active")\
+                .limit(1)\
+                .execute()
+            
+            if not integration_response.data or len(integration_response.data) == 0:
+                yield f"data: {json.dumps({'status': 'error', 'message': 'No active Tautulli integration found'})}\n\n"
+                return
+            
+            integration = integration_response.data[0]
+            
+            # Initialize services
+            tautulli = TautulliService(
+                url=integration["url"],
+                api_key=integration["api_key"]
+            )
+            
+            # Send counting status
+            yield f"data: {json.dumps({'status': 'counting', 'message': 'Fetching watch history...'})}\n\n"
+            
+            started_at = datetime.utcnow()
+            sync_service = TautulliSyncService(supabase, tautulli)
+            
+            # Track progress
+            items_processed = 0
+            items_updated = 0
+            items_created = 0
+            errors = []
+            
+            # Fetch history in batches and stream progress
+            batch_size = 100
+            offset = 0
+            total_estimated = None
+            
+            while True:
+                try:
+                    # Fetch batch from Tautulli
+                    history_batch = await tautulli.get_history(
+                        length=batch_size,
+                        start=offset,
+                        order_column="date",
+                        order_dir="desc"
+                    )
+                    
+                    if not history_batch or "data" not in history_batch:
+                        break
+                    
+                    records = history_batch["data"].get("data", [])
+                    if not records:
+                        break
+                    
+                    # Update total estimate on first batch
+                    if total_estimated is None:
+                        total_estimated = history_batch["data"].get("recordsTotal", len(records))
+                    
+                    # Process batch
+                    batch_stats = await sync_service.process_history_batch(records)
+                    items_processed += len(records)
+                    items_updated += batch_stats.get("updated", 0)
+                    items_created += batch_stats.get("created", 0)
+                    
+                    # Calculate ETA
+                    elapsed = (datetime.utcnow() - started_at).total_seconds()
+                    items_per_second = items_processed / elapsed if elapsed > 0 else 0
+                    remaining = max(0, (total_estimated or 0) - items_processed)
+                    eta_seconds = int(remaining / items_per_second) if items_per_second > 0 else 0
+                    
+                    # Send progress update
+                    yield f"data: {json.dumps({'status': 'syncing', 'current': items_processed, 'total': total_estimated, 'eta_seconds': eta_seconds, 'items_per_second': round(items_per_second, 1), 'updated': items_updated, 'created': items_created})}\n\n"
+                    
+                    await asyncio.sleep(0.1)  # Small delay to not overwhelm client
+                    
+                    offset += batch_size
+                    
+                    # Stop if we've processed enough or reached the end
+                    if len(records) < batch_size or offset >= (total_estimated or float('inf')):
+                        break
+                        
+                except Exception as batch_error:
+                    logger.error(f"Error processing batch: {batch_error}")
+                    errors.append(str(batch_error))
+                    continue
+            
+            # Complete
+            completed_at = datetime.utcnow()
+            duration = (completed_at - started_at).total_seconds()
+            
+            # Log to sync_history
+            server_id = integration.get("server_id")
+            if server_id:
+                sync_record = {
+                    "user_id": admin_user["id"],
+                    "server_id": server_id,
+                    "sync_type": "tautulli_aggregated_stats",
+                    "status": "completed",
+                    "items_processed": items_processed,
+                    "items_updated": items_updated,
+                    "items_added": items_created,
+                    "items_removed": 0,
+                    "started_at": started_at.isoformat(),
+                    "completed_at": completed_at.isoformat(),
+                    "metadata": {
+                        "days_back": days_back,
+                        "duration_seconds": duration,
+                        "errors": errors
+                    }
+                }
+                supabase.table("sync_history").insert(sync_record).execute()
+            
+            yield f"data: {json.dumps({'status': 'complete', 'current': items_processed, 'total': items_processed, 'duration_seconds': round(duration, 1), 'updated': items_updated, 'created': items_created, 'message': f'Synced {items_processed} history items in {duration:.1f}s'})}\n\n"
+            
+        except Exception as e:
+            logger.error(f"Tautulli sync stream error: {e}", exc_info=True)
+            yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+
 @router.get("/sync/tautulli/status")
 async def get_tautulli_sync_status(
     admin_user: Dict[str, Any] = Depends(require_admin),

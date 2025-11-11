@@ -172,45 +172,109 @@ export default function IntegrationsPage() {
     }
   }
 
+  const [tautulliSyncProgress, setTautulliSyncProgress] = useState({ current: 0, total: 0, eta: '', itemsPerSecond: 0, updated: 0, created: 0 })
+  const [tautulliSyncEventSource, setTautulliSyncEventSource] = useState<EventSource | null>(null)
+
   async function syncTautulliData(days: number = 90) {
     setSyncingTautulli(true)
     setError('')
     setSuccessMessage('')
+    setTautulliSyncProgress({ current: 0, total: 0, eta: '', itemsPerSecond: 0, updated: 0, created: 0 })
 
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return
 
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/admin/sync/tautulli`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ days_back: days })
-        }
+      // Use streaming endpoint for real-time progress
+      const eventSource = new EventSource(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/admin/sync/tautulli/stream?days_back=${days}&auth_token=${session.access_token}`
       )
+      setTautulliSyncEventSource(eventSource)
 
-      if (response.ok) {
-        const result = await response.json()
-        setSuccessMessage(
-          `✅ Tautulli sync complete!\n\n` +
-          `Items fetched: ${result.items_fetched}\n` +
-          `Items updated: ${result.items_updated}\n` +
-          `Duration: ${(result.duration_seconds || 0).toFixed(1)}s`
-        )
-      } else {
-        const error = await response.json()
-        setError(error.detail || 'Failed to sync Tautulli data')
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          
+          if (data.status === 'connecting' || data.status === 'counting') {
+            setTautulliSyncProgress({ 
+              current: 0, 
+              total: 0, 
+              eta: data.message,
+              itemsPerSecond: 0,
+              updated: 0,
+              created: 0
+            })
+          } else if (data.status === 'syncing') {
+            const etaMinutes = Math.floor(data.eta_seconds / 60)
+            const etaSeconds = data.eta_seconds % 60
+            const etaStr = etaMinutes > 0 
+              ? `${etaMinutes}m ${etaSeconds}s remaining`
+              : `${etaSeconds}s remaining`
+            
+            setTautulliSyncProgress({
+              current: data.current,
+              total: data.total,
+              eta: etaStr,
+              itemsPerSecond: data.items_per_second || 0,
+              updated: data.updated || 0,
+              created: data.created || 0
+            })
+          } else if (data.status === 'complete') {
+            setTautulliSyncProgress({
+              current: data.current,
+              total: data.total,
+              eta: `Completed in ${data.duration_seconds}s`,
+              itemsPerSecond: 0,
+              updated: data.updated || 0,
+              created: data.created || 0
+            })
+            setSuccessMessage(data.message)
+            
+            // Close connection
+            eventSource.close()
+            setTautulliSyncEventSource(null)
+            setSyncingTautulli(false)
+            
+            // Reload integrations to update last_sync_at
+            setTimeout(() => {
+              loadIntegrations()
+              setSuccessMessage('')
+              setTautulliSyncProgress({ current: 0, total: 0, eta: '', itemsPerSecond: 0, updated: 0, created: 0 })
+            }, 5000)
+          } else if (data.status === 'error') {
+            setError(data.message)
+            eventSource.close()
+            setTautulliSyncEventSource(null)
+            setSyncingTautulli(false)
+          }
+        } catch (parseError) {
+          console.error('Failed to parse SSE data:', parseError)
+        }
       }
+
+      eventSource.onerror = (error) => {
+        console.error('SSE error:', error)
+        setError('Sync connection lost. Please try again.')
+        eventSource.close()
+        setTautulliSyncEventSource(null)
+        setSyncingTautulli(false)
+      }
+      
     } catch (err) {
-      setError('Failed to sync Tautulli data')
+      setError('Failed to start sync. Please try again.')
       console.error(err)
-    } finally {
       setSyncingTautulli(false)
     }
+  }
+
+  async function cancelTautulliSync() {
+    if (tautulliSyncEventSource) {
+      tautulliSyncEventSource.close()
+      setTautulliSyncEventSource(null)
+    }
+    setSyncingTautulli(false)
+    setSuccessMessage('Tautulli sync cancelled')
+    setTimeout(() => setSuccessMessage(''), 3000)
   }
 
   async function deleteIntegration(id: string, name: string) {
@@ -439,6 +503,62 @@ export default function IntegrationsPage() {
               Sync watch statistics from Tautulli to enable intelligent deletion decisions.
               This populates play counts, last watched dates, and watch durations for all media items.
             </p>
+            
+            {/* Sync Progress Indicator */}
+            {syncingTautulli && tautulliSyncProgress.current > 0 && (
+              <div className="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4 mb-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <svg className="animate-spin h-5 w-5 text-blue-400" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <div className="flex flex-col">
+                      <span className="text-blue-300 font-medium">
+                        Syncing History: {tautulliSyncProgress.current.toLocaleString()} / {tautulliSyncProgress.total.toLocaleString()} items
+                      </span>
+                      <span className="text-blue-400 text-sm">
+                        Updated: {tautulliSyncProgress.updated} • Created: {tautulliSyncProgress.created}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-blue-400 text-sm font-medium">{tautulliSyncProgress.eta}</div>
+                    {tautulliSyncProgress.itemsPerSecond > 0 && (
+                      <div className="text-blue-500 text-xs">⚡ {tautulliSyncProgress.itemsPerSecond.toFixed(1)} items/sec</div>
+                    )}
+                  </div>
+                </div>
+                <div className="w-full bg-slate-700 rounded-full h-2.5">
+                  <div 
+                    className="bg-gradient-to-r from-blue-500 to-blue-400 h-2.5 rounded-full transition-all duration-300"
+                    style={{ width: `${tautulliSyncProgress.total > 0 ? Math.min((tautulliSyncProgress.current / tautulliSyncProgress.total) * 100, 100) : 0}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-xs text-slate-500 mt-1">
+                  <span>{tautulliSyncProgress.total > 0 ? Math.min((tautulliSyncProgress.current / tautulliSyncProgress.total) * 100, 100).toFixed(1) : 0}%</span>
+                  <span>{Math.max(tautulliSyncProgress.total - tautulliSyncProgress.current, 0)} remaining</span>
+                </div>
+                <button
+                  onClick={cancelTautulliSync}
+                  className="mt-3 w-full bg-red-600 hover:bg-red-700 px-4 py-2 rounded text-sm font-medium transition-colors"
+                >
+                  Cancel Sync
+                </button>
+              </div>
+            )}
+            
+            {syncingTautulli && tautulliSyncProgress.current === 0 && (
+              <div className="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4 mb-4">
+                <div className="flex items-center gap-3">
+                  <svg className="animate-spin h-5 w-5 text-blue-400" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span className="text-blue-300 font-medium">{tautulliSyncProgress.eta}</span>
+                </div>
+              </div>
+            )}
             
             {successMessage && (
               <div className="bg-green-900/50 border border-green-500 rounded p-3 mb-4 text-sm whitespace-pre-line">

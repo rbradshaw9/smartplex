@@ -122,6 +122,34 @@ class TautulliSyncService:
             stats["completed_at"] = datetime.now(timezone.utc).isoformat()
             return stats
     
+    async def process_history_batch(self, history_batch: List[Dict[str, Any]]) -> Dict[str, int]:
+        """
+        Process a batch of history items and update media_items.
+        
+        Used by streaming sync to process incremental batches.
+        
+        Args:
+            history_batch: List of history items from Tautulli
+            
+        Returns:
+            Dict with "updated" and "created" counts
+        """
+        stats = {"updated": 0, "created": 0, "errors": 0}
+        
+        # Aggregate this batch
+        aggregated_stats = self._aggregate_by_rating_key(history_batch)
+        
+        # Update media_items in database
+        for rating_key, item_stats in aggregated_stats.items():
+            try:
+                await self._update_media_item_stats(rating_key, item_stats)
+                stats["updated"] += 1
+            except Exception as e:
+                logger.error(f"Error updating media item {rating_key}: {e}")
+                stats["errors"] += 1
+        
+        return stats
+    
     def _aggregate_by_rating_key(self, history: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
         """
         Aggregate watch history by rating_key (Plex item ID).

@@ -91,7 +91,28 @@ export default function DeletionManagementPage() {
 
   useEffect(() => {
     // Run auth check, rules loading, and storage info in parallel
-    Promise.all([checkAuth(), loadRules(), loadStorageInfo()])
+    // BUT don't let storage info block the page from loading
+    const startTime = Date.now()
+    console.log('[Deletion Page] Starting initialization...')
+    
+    Promise.all([
+      checkAuth().catch(err => console.error('Auth error:', err)),
+      loadRules().catch(err => console.error('Rules error:', err)),
+      loadStorageInfo().catch(err => {
+        console.error('Storage info error:', err)
+        // Set empty storage info so page doesn't hang
+        setStorageInfo({
+          total_items: 0,
+          total_used_gb: 0,
+          total_used_tb: 0,
+          capacity_configured: false
+        })
+      })
+    ])
+      .then(() => {
+        const duration = Date.now() - startTime
+        console.log(`[Deletion Page] Initialization complete in ${duration}ms`)
+      })
       .catch(err => {
         console.error('Init error:', err)
         setError('Failed to load page. Please refresh.')
