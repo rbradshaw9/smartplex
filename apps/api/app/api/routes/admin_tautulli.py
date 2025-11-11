@@ -264,13 +264,13 @@ async def stream_tautulli_sync(
                     if not history_batch or "data" not in history_batch:
                         break
                     
-                    records = history_batch["data"].get("data", [])
+                    records = history_batch.get("data", [])
                     if not records:
                         break
                     
                     # Update total estimate on first batch
                     if total_estimated is None:
-                        total_estimated = history_batch["data"].get("recordsTotal", len(records))
+                        total_estimated = history_batch.get("recordsTotal", len(records))
                     
                     # Process batch
                     batch_stats = await sync_service.process_history_batch(records)
