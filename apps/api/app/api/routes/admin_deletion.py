@@ -372,15 +372,33 @@ async def execute_deletion(
         deletion_service = DeletionService(supabase)
         cascade_service = CascadeDeletionService(supabase)
         
-        # First scan for candidates
-        candidates = await deletion_service.scan_for_candidates(
-            rule_id=UUID(request.rule_id),
-            dry_run=True
-        )
-        
-        # Filter to specific candidates if requested
+        # CRITICAL FIX: If specific candidate_ids provided, ONLY delete those
+        # Do NOT re-scan rule as library may have changed since user's scan
         if request.candidate_ids:
-            candidates = [c for c in candidates if c['id'] in request.candidate_ids]
+            # User selected specific items - fetch ONLY those from database
+            logger.info(f"Deleting {len(request.candidate_ids)} specifically selected items (not re-scanning rule)")
+            candidates = []
+            for candidate_id in request.candidate_ids:
+                try:
+                    media_result = supabase.table("media_items")\
+                        .select("id, title, type, file_size_mb, plex_id, server_id, sonarr_series_id, radarr_movie_id, tmdb_id, tvdb_id, parent_title")\
+                        .eq("id", candidate_id)\
+                        .single()\
+                        .execute()
+                    
+                    if media_result.data:
+                        candidates.append(media_result.data)
+                    else:
+                        logger.warning(f"Candidate {candidate_id} not found in database")
+                except Exception as e:
+                    logger.error(f"Error fetching candidate {candidate_id}: {e}")
+        else:
+            # No specific selection - scan rule for ALL matching candidates
+            logger.info(f"No candidate_ids provided - scanning rule {request.rule_id} for all matches")
+            candidates = await deletion_service.scan_for_candidates(
+                rule_id=UUID(request.rule_id),
+                dry_run=True
+            )
         
         if not candidates:
             return {
