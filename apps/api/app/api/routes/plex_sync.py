@@ -29,12 +29,12 @@ async def get_current_storage_stats(supabase: Client) -> dict:
     """Calculate current storage statistics from database."""
     try:
         storage_query = supabase.table('media_items')\
-            .select('file_size_mb')\
-            .not_.is_('file_size_mb', 'null')\
+            .select('file_size_bytes')\
+            .not_.is_('file_size_bytes', 'null')\
             .execute()
         
-        total_size_mb = sum(item.get('file_size_mb', 0) or 0 for item in (storage_query.data or []))
-        total_used_gb = round(total_size_mb / 1024, 2)
+        total_size_bytes = sum(item.get('file_size_bytes', 0) or 0 for item in (storage_query.data or []))
+        total_used_gb = round(total_size_bytes / (1024 * 1024 * 1024), 2)
         
         # Get capacity config
         capacity_config = supabase.table('system_config')\
@@ -219,6 +219,7 @@ async def sync_library_generator(
                                             'grandparent_title': show_title,
                                             'year': getattr(episode, 'year', None),
                                             'duration_ms': getattr(episode, 'duration', None),
+                                            'file_size_bytes': file_size_bytes if file_size_bytes > 0 else None,
                                             'tmdb_id': tmdb_id,
                                             'tvdb_id': tvdb_id,
                                             'imdb_id': imdb_id
@@ -304,6 +305,7 @@ async def sync_library_generator(
                                     'type': 'movie',
                                     'year': getattr(item, 'year', None),
                                     'duration_ms': getattr(item, 'duration', None),
+                                    'file_size_bytes': file_size_bytes if file_size_bytes > 0 else None,
                                     'tmdb_id': tmdb_id,
                                     'tvdb_id': tvdb_id,
                                     'imdb_id': imdb_id
@@ -514,38 +516,38 @@ async def get_storage_info(
     try:
         # Get storage from database (much faster than querying Plex)
         storage_query = supabase.table('media_items')\
-            .select('file_size_mb, type')\
-            .not_.is_('file_size_mb', 'null')\
+            .select('file_size_bytes, type')\
+            .not_.is_('file_size_bytes', 'null')\
             .execute()
         
-        total_size_mb = 0
+        total_size_bytes = 0
         total_items = 0
         by_type = {}
         
         if storage_query.data:
             for item in storage_query.data:
-                size_mb = item.get('file_size_mb', 0) or 0
+                size_bytes = item.get('file_size_bytes', 0) or 0
                 item_type = item.get('type', 'unknown')
                 
-                total_size_mb += size_mb
+                total_size_bytes += size_bytes
                 total_items += 1
                 
                 if item_type not in by_type:
-                    by_type[item_type] = {'count': 0, 'size_mb': 0}
+                    by_type[item_type] = {'count': 0, 'size_bytes': 0}
                 by_type[item_type]['count'] += 1
-                by_type[item_type]['size_mb'] += size_mb
+                by_type[item_type]['size_bytes'] += size_bytes
         
-        # Convert to human-readable
-        total_used_gb = round(total_size_mb / 1024, 2)
-        total_used_tb = round(total_size_mb / (1024 * 1024), 2)
+        # Convert to human-readable (bytes to GB/TB)
+        total_used_gb = round(total_size_bytes / (1024 * 1024 * 1024), 2)
+        total_used_tb = round(total_size_bytes / (1024 * 1024 * 1024 * 1024), 2)
         
         # Format by_type for response
         by_type_formatted = {}
         for media_type, stats in by_type.items():
             by_type_formatted[media_type] = {
                 'count': stats['count'],
-                'size_gb': round(stats['size_mb'] / 1024, 2),
-                'size_tb': round(stats['size_mb'] / (1024 * 1024), 2)
+                'size_gb': round(stats['size_bytes'] / (1024 * 1024 * 1024), 2),
+                'size_tb': round(stats['size_bytes'] / (1024 * 1024 * 1024 * 1024), 2)
             }
         
         # Get total capacity from system config
