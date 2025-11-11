@@ -50,6 +50,7 @@ export default function DeletionManagementPage() {
   const [executing, setExecuting] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0, eta: '', title: '', section: '', itemsPerSecond: 0 })
+  const [syncEventSource, setSyncEventSource] = useState<EventSource | null>(null)
   const [storageInfo, setStorageInfo] = useState<{ 
     total_items: number
     total_used_gb: number
@@ -307,6 +308,33 @@ Type "DELETE" below to confirm:`
     }
   }
 
+  async function cancelSync() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      // Call cancel endpoint
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/plex/cancel-sync`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      })
+
+      // Close event source
+      if (syncEventSource) {
+        syncEventSource.close()
+        setSyncEventSource(null)
+      }
+
+      setSyncing(false)
+      setSuccessMessage('Sync cancelled')
+      setTimeout(() => setSuccessMessage(''), 5000)
+    } catch (err) {
+      console.error('Failed to cancel sync:', err)
+    }
+  }
+
   async function syncLibrary() {
     setSyncing(true)
     setError('')
@@ -331,6 +359,7 @@ Type "DELETE" below to confirm:`
       const eventSource = new EventSource(
         `${process.env.NEXT_PUBLIC_API_URL}/api/plex/sync-library-stream?plex_token=${plexToken}&auth_token=${session.access_token}`
       )
+      setSyncEventSource(eventSource)
 
       eventSource.onmessage = (event) => {
         try {
@@ -360,6 +389,20 @@ Type "DELETE" below to confirm:`
               section: data.section || '',
               itemsPerSecond: data.items_per_second || 0
             })
+            
+            // Update storage info in real-time if provided
+            if (data.storage) {
+              setStorageInfo({
+                total_items: data.current, // Use current count as approximate
+                total_used_gb: data.storage.total_used_gb,
+                total_used_tb: parseFloat((data.storage.total_used_gb / 1024).toFixed(2)),
+                total_capacity_gb: data.storage.total_capacity_gb,
+                free_gb: data.storage.free_gb,
+                used_percentage: data.storage.used_percentage,
+                capacity_configured: data.storage.total_capacity_gb !== null,
+                by_type: storageInfo?.by_type || {}
+              })
+            }
           } else if (data.status === 'complete') {
             setSyncProgress({
               current: data.current,
@@ -371,13 +414,26 @@ Type "DELETE" below to confirm:`
             })
             setSuccessMessage(data.message)
             
+            // Update storage from completion data
+            if (data.storage) {
+              setStorageInfo({
+                total_items: data.current,
+                total_used_gb: data.storage.total_used_gb,
+                total_used_tb: parseFloat((data.storage.total_used_gb / 1024).toFixed(2)),
+                total_capacity_gb: data.storage.total_capacity_gb,
+                free_gb: data.storage.free_gb,
+                used_percentage: data.storage.used_percentage,
+                capacity_configured: data.storage.total_capacity_gb !== null,
+                by_type: storageInfo?.by_type || {}
+              })
+            }
+            
             // Close connection
             eventSource.close()
+            setSyncEventSource(null)
             setSyncing(false)
             
-            // Reload storage info immediately and again after 2 seconds
-            // (sometimes database takes a moment to reflect all changes)
-            loadStorageInfo()
+            // Reload full storage info (with by_type breakdown) after 2 seconds
             setTimeout(() => {
               loadStorageInfo()
             }, 2000)
@@ -390,7 +446,14 @@ Type "DELETE" below to confirm:`
           } else if (data.status === 'error') {
             setError(data.message)
             eventSource.close()
+            setSyncEventSource(null)
             setSyncing(false)
+          } else if (data.status === 'cancelled') {
+            setSuccessMessage('Sync cancelled by user')
+            eventSource.close()
+            setSyncEventSource(null)
+            setSyncing(false)
+            setTimeout(() => setSuccessMessage(''), 5000)
           } else if (data.status === 'warning') {
             console.warn('Sync warning:', data.message)
           }
@@ -403,6 +466,7 @@ Type "DELETE" below to confirm:`
         console.error('SSE error:', error)
         setError('Sync connection lost. Please try again.')
         eventSource.close()
+        setSyncEventSource(null)
         setSyncing(false)
       }
       
@@ -421,12 +485,15 @@ Type "DELETE" below to confirm:`
       const plexToken = localStorage.getItem('plex_token')
       if (!plexToken) return
 
+      // Add timestamp to bust any caching
+      const timestamp = Date.now()
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/plex/storage-info?plex_token=${plexToken}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/plex/storage-info?plex_token=${plexToken}&_t=${timestamp}`,
         {
           headers: {
             'Authorization': `Bearer ${session.access_token}`,
           },
+          cache: 'no-store', // Prevent browser caching
         }
       )
 
@@ -708,25 +775,34 @@ Type "DELETE" below to confirm:`
             <p className="text-slate-400">Intelligently clean up unwatched content with grace periods</p>
           </div>
           <div className="flex gap-3">
-            <button
-              onClick={syncLibrary}
-              disabled={syncing}
-              className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 px-6 py-3 rounded-lg font-semibold transition-colors flex items-center gap-2"
-            >
-              {syncing ? (
-                <>
-                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Syncing...
-                </>
-              ) : (
-                <>
-                  🔄 Sync Library
-                </>
-              )}
-            </button>
+            {syncing ? (
+              <button
+                onClick={cancelSync}
+                className="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-lg font-semibold transition-colors flex items-center gap-2"
+              >
+                ⏹ Cancel Sync
+              </button>
+            ) : (
+              <button
+                onClick={syncLibrary}
+                disabled={syncing}
+                className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 px-6 py-3 rounded-lg font-semibold transition-colors flex items-center gap-2"
+              >
+                {syncing ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Syncing...
+                  </>
+                ) : (
+                  <>
+                    🔄 Sync Library
+                  </>
+                )}
+              </button>
+            )}
             <button
               onClick={() => setShowRuleForm(true)}
               className="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold transition-colors"

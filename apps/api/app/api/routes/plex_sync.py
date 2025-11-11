@@ -21,6 +21,42 @@ from app.core.plex_connection import PlexConnectionManager
 router = APIRouter()
 logger = get_logger("plex.sync")
 
+# Global sync cancellation tracking (in production, use Redis or DB)
+_active_syncs: dict[str, bool] = {}  # user_id -> is_cancelled
+
+
+async def get_current_storage_stats(supabase: Client) -> dict:
+    """Calculate current storage statistics from database."""
+    try:
+        storage_query = supabase.table('media_items')\
+            .select('file_size_mb')\
+            .not_.is_('file_size_mb', 'null')\
+            .execute()
+        
+        total_size_mb = sum(item.get('file_size_mb', 0) or 0 for item in (storage_query.data or []))
+        total_used_gb = round(total_size_mb / 1024, 2)
+        
+        # Get capacity config
+        capacity_config = supabase.table('system_config')\
+            .select('value')\
+            .eq('key', 'storage_capacity')\
+            .execute()
+        
+        total_capacity_gb = None
+        if capacity_config.data and len(capacity_config.data) > 0:
+            capacity_data = capacity_config.data[0]['value']
+            total_capacity_gb = capacity_data.get('total_gb')
+        
+        return {
+            "total_used_gb": total_used_gb,
+            "total_capacity_gb": total_capacity_gb,
+            "free_gb": round(total_capacity_gb - total_used_gb, 2) if total_capacity_gb else None,
+            "used_percentage": round((total_used_gb / total_capacity_gb) * 100, 1) if total_capacity_gb else None
+        }
+    except Exception as e:
+        logger.warning(f"Failed to calculate storage stats: {e}")
+        return {}
+
 
 async def sync_library_generator(
     user_id: str,
@@ -36,6 +72,11 @@ async def sync_library_generator(
     
     conn_manager = PlexConnectionManager(supabase)
     start_time = datetime.now(timezone.utc)
+    last_storage_update = 0  # Track when we last sent storage update
+    synced_plex_ids = set()  # Track all Plex IDs we see during sync for orphan cleanup
+    
+    # Initialize sync state
+    _active_syncs[user_id] = False  # False = not cancelled
     
     try:
         # Step 1: Connect to Plex
@@ -116,6 +157,13 @@ async def sync_library_generator(
                         items = section.all()
                         
                         for item in items:
+                            # Check for cancellation
+                            if _active_syncs.get(user_id, False):
+                                logger.info(f"Sync cancelled by user {user_id}")
+                                yield f'data: {{"status": "cancelled", "message": "Sync cancelled by user", "current": {synced_items}, "total": {total_items}}}\n\n'
+                                _active_syncs.pop(user_id, None)
+                                return
+                            
                             # For TV shows, iterate through all episodes
                             if section.type == 'show':
                                 try:
@@ -123,6 +171,13 @@ async def sync_library_generator(
                                     episodes = item.episodes()
                                     
                                     for episode in episodes:
+                                        # Check for cancellation
+                                        if _active_syncs.get(user_id, False):
+                                            logger.info(f"Sync cancelled by user {user_id}")
+                                            yield f'data: {{"status": "cancelled", "message": "Sync cancelled by user", "current": {synced_items}, "total": {total_items}}}\n\n'
+                                            _active_syncs.pop(user_id, None)
+                                            return
+                                        
                                         synced_items += 1
                                         
                                         # Extract metadata
@@ -183,6 +238,7 @@ async def sync_library_generator(
                                                 media_data,
                                                 on_conflict='server_id,plex_id'
                                             ).execute()
+                                            synced_plex_ids.add((server_id, str(episode.ratingKey)))
                                         except Exception as db_error:
                                             logger.error(f"Failed to upsert episode {title}: {db_error}")
                                         
@@ -202,6 +258,12 @@ async def sync_library_generator(
                                             "eta_seconds": eta_seconds,
                                             "items_per_second": round(items_per_second, 1)
                                         }
+                                        
+                                        # Add storage update every 100 items
+                                        if synced_items - last_storage_update >= 100:
+                                            storage_stats = await get_current_storage_stats(supabase)
+                                            progress_data["storage"] = storage_stats
+                                            last_storage_update = synced_items
                                         
                                         yield f'data: {json.dumps(progress_data)}\n\n'
                                         
@@ -267,6 +329,7 @@ async def sync_library_generator(
                                         media_data,
                                         on_conflict='server_id,plex_id'
                                     ).execute()
+                                    synced_plex_ids.add((server_id, str(item.ratingKey)))
                                 except Exception as db_error:
                                     logger.error(f"Failed to upsert {title}: {db_error}")
                                 
@@ -287,6 +350,12 @@ async def sync_library_generator(
                                     "items_per_second": round(items_per_second, 1)
                                 }
                                 
+                                # Add storage update every 100 items
+                                if synced_items - last_storage_update >= 100:
+                                    storage_stats = await get_current_storage_stats(supabase)
+                                    progress_data["storage"] = storage_stats
+                                    last_storage_update = synced_items
+                                
                                 yield f'data: {json.dumps(progress_data)}\n\n'
                                 
                                 # Small delay to prevent overwhelming the client
@@ -301,8 +370,41 @@ async def sync_library_generator(
                 yield f'data: {{"status": "warning", "message": "Failed to connect to {resource.name}"}}\n\n'
                 continue
         
+        # Cleanup orphaned media (items in DB that no longer exist in Plex)
+        yield f'data: {{"status": "syncing", "message": "Cleaning up orphaned media..."}}\n\n'
+        
+        orphaned_count = 0
+        try:
+            # Get all media items from database
+            all_db_items = supabase.table('media_items').select('id, server_id, plex_id, title').execute()
+            
+            if all_db_items.data:
+                for db_item in all_db_items.data:
+                    server_id_key = (db_item['server_id'], db_item['plex_id'])
+                    
+                    # If this item wasn't seen during sync, it's orphaned
+                    if server_id_key not in synced_plex_ids:
+                        try:
+                            supabase.table('media_items').delete().eq('id', db_item['id']).execute()
+                            orphaned_count += 1
+                            logger.info(f"Removed orphaned media: {db_item['title']} (plex_id: {db_item['plex_id']})")
+                        except Exception as delete_error:
+                            logger.error(f"Failed to delete orphaned item {db_item['title']}: {delete_error}")
+            
+            if orphaned_count > 0:
+                logger.info(f"Cleaned up {orphaned_count} orphaned media items")
+        except Exception as cleanup_error:
+            logger.error(f"Failed to cleanup orphaned media: {cleanup_error}")
+        
         # Complete
         duration_seconds = int((datetime.now(timezone.utc) - start_time).total_seconds())
+        
+        # Get final storage stats (after cleanup)
+        final_storage = await get_current_storage_stats(supabase)
+        
+        completion_message = f"✅ Successfully synced {synced_items} items in {duration_seconds}s"
+        if orphaned_count > 0:
+            completion_message += f" (removed {orphaned_count} orphaned items)"
         
         completion_data = {
             "status": "complete",
@@ -310,7 +412,9 @@ async def sync_library_generator(
             "total": total_items,
             "duration_seconds": duration_seconds,
             "servers_connected": servers_connected,
-            "message": f"✅ Successfully synced {synced_items} items in {duration_seconds}s"
+            "orphaned_removed": orphaned_count,
+            "message": completion_message,
+            "storage": final_storage
         }
         
         yield f'data: {json.dumps(completion_data)}\n\n'
@@ -335,6 +439,26 @@ async def sync_library_generator(
     except Exception as e:
         logger.error(f"Sync failed: {e}", exc_info=True)
         yield f'data: {{"status": "error", "message": "Sync failed: {str(e)}"}}\n\n'
+    finally:
+        # Cleanup sync state
+        _active_syncs.pop(user_id, None)
+
+
+@router.post("/cancel-sync")
+async def cancel_sync(
+    user: dict = Depends(get_current_user),
+):
+    """
+    Cancel an in-progress library sync for the current user.
+    """
+    user_id = user['id']
+    
+    if user_id in _active_syncs:
+        _active_syncs[user_id] = True  # Mark as cancelled
+        logger.info(f"Sync cancellation requested for user {user_id}")
+        return {"message": "Sync cancellation requested"}
+    else:
+        return {"message": "No active sync found"}
 
 
 @router.get("/sync-library-stream")

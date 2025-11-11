@@ -72,7 +72,7 @@ class CascadeDeletionService:
             "deleted_by_user_id": user_id,
             "dry_run": dry_run,
             "status": "pending",
-            "file_size_mb": media_item.get('file_size_mb')
+            "file_size_mb": int(media_item.get('file_size_mb', 0)) if media_item.get('file_size_mb') else None
         }
         
         # Insert event to track progress

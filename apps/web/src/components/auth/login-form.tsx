@@ -46,7 +46,7 @@ export function LoginForm() {
 
       // Step 2: Open Plex auth in new window
       const authUrl = `https://app.plex.tv/auth#?clientID=${clientId}&code=${pinData.code}&context%5Bdevice%5D%5Bproduct%5D=SmartPlex`
-      window.open(authUrl, 'PlexAuth', 'width=600,height=700')
+      const authWindow = window.open(authUrl, 'PlexAuth', 'width=600,height=700')
 
       // Step 3: Poll for auth token
       let pollCount = 0
@@ -125,6 +125,11 @@ export function LoginForm() {
             // Store Plex token for API requests
             if (typeof window !== 'undefined') {
               localStorage.setItem('plex_token', checkData.authToken)
+            }
+
+            // Close the OAuth popup window
+            if (authWindow && !authWindow.closed) {
+              authWindow.close()
             }
 
             setLoading(false)
