@@ -372,6 +372,8 @@ async def execute_deletion(
         deletion_service = DeletionService(supabase)
         cascade_service = CascadeDeletionService(supabase)
         
+        logger.info(f"🔍 Execute deletion request: rule_id={request.rule_id}, dry_run={request.dry_run}, candidate_ids={request.candidate_ids}")
+        
         # CRITICAL FIX: If specific candidate_ids provided, ONLY delete those
         # Do NOT re-scan rule as library may have changed since user's scan
         if request.candidate_ids:
@@ -380,6 +382,7 @@ async def execute_deletion(
             candidates = []
             for candidate_id in request.candidate_ids:
                 try:
+                    logger.info(f"  Fetching candidate {candidate_id} from database...")
                     media_result = supabase.table("media_items")\
                         .select("id, title, type, file_size_mb, plex_id, server_id, sonarr_series_id, radarr_movie_id, tmdb_id, tvdb_id, parent_title")\
                         .eq("id", candidate_id)\
@@ -388,10 +391,11 @@ async def execute_deletion(
                     
                     if media_result.data:
                         candidates.append(media_result.data)
+                        logger.info(f"  ✅ Found: {media_result.data.get('title')}")
                     else:
-                        logger.warning(f"Candidate {candidate_id} not found in database")
+                        logger.warning(f"  ❌ Candidate {candidate_id} not found in database")
                 except Exception as e:
-                    logger.error(f"Error fetching candidate {candidate_id}: {e}")
+                    logger.error(f"  ❌ Error fetching candidate {candidate_id}: {e}")
         else:
             # No specific selection - scan rule for ALL matching candidates
             logger.info(f"No candidate_ids provided - scanning rule {request.rule_id} for all matches")
@@ -399,6 +403,10 @@ async def execute_deletion(
                 rule_id=UUID(request.rule_id),
                 dry_run=True
             )
+        
+        logger.info(f"📊 Total candidates prepared for deletion: {len(candidates)}")
+        for idx, cand in enumerate(candidates[:5]):  # Log first 5
+            logger.info(f"  {idx+1}. {cand.get('title', 'unknown')} (ID: {cand.get('id', 'unknown')})")
         
         if not candidates:
             return {
