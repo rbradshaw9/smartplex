@@ -342,21 +342,40 @@ async def get_recommendations(
                     .limit(50)\
                     .execute()
                 
-                viewing_data = []
+                recent_watches = []
+                liked_items = []
+                disliked_items = []
+                
                 if user_stats.data:
                     for stat in user_stats.data:
                         if stat.get('media_items'):
                             media = stat['media_items']
-                            viewing_data.append({
+                            item = {
                                 "title": media.get('title'),
                                 "type": media.get('type'),
-                                "year": media.get('year'),
+                                "year": media.get('year') or 2023,  # Default to 2023 if None
                                 "user_rating": stat.get('rating'),
                                 "play_count": stat.get('play_count', 0)
-                            })
+                            }
+                            recent_watches.append(item)
+                            
+                            # Categorize based on rating
+                            rating = stat.get('rating')
+                            if rating and rating >= 4:
+                                liked_items.append(item)
+                            elif rating and rating <= 2:
+                                disliked_items.append(item)
+                
+                # Build user context dict
+                user_context = {
+                    "recent_watches": recent_watches,
+                    "liked_items": liked_items,
+                    "disliked_items": disliked_items,
+                    "favorite_genres": []  # Could be derived from liked_items
+                }
                 
                 # Get AI recommendations based on history
-                recommendations = await ai_service.generate_recommendations(viewing_data, limit=limit)
+                recommendations = await ai_service.generate_recommendations(user_context, count=limit)
             except Exception as e:
                 print(f"AI recommendations failed: {e}, falling back to generic")
                 recommendations = []
