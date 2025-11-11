@@ -5,6 +5,7 @@ Uses Server-Sent Events (SSE) to stream sync progress to the client.
 """
 
 import asyncio
+import json
 from datetime import datetime, timezone
 from typing import AsyncGenerator
 
@@ -193,7 +194,7 @@ async def sync_library_generator(
                                             "items_per_second": round(items_per_second, 1)
                                         }
                                         
-                                        yield f'data: {progress_data}\n\n'
+                                        yield f'data: {json.dumps(progress_data)}\n\n'
                                         
                                         # Small delay to prevent overwhelming the client
                                         await asyncio.sleep(0.01)
@@ -277,7 +278,7 @@ async def sync_library_generator(
                                     "items_per_second": round(items_per_second, 1)
                                 }
                                 
-                                yield f'data: {progress_data}\n\n'
+                                yield f'data: {json.dumps(progress_data)}\n\n'
                                 
                                 # Small delay to prevent overwhelming the client
                                 await asyncio.sleep(0.01)
@@ -303,7 +304,7 @@ async def sync_library_generator(
             "message": f"✅ Successfully synced {synced_items} items in {duration_seconds}s"
         }
         
-        yield f'data: {completion_data}\n\n'
+        yield f'data: {json.dumps(completion_data)}\n\n'
         
         # Log sync event
         try:
