@@ -37,13 +37,14 @@ logger = get_logger("main")
 settings = get_settings()
 if settings.sentry_dsn:
     sentry_sdk.init(
-        dsn=settings.sentry_dsn,
+        dsn=settings.sentry_dsn or "https://9352877a711f16edf148d59fd3d7900b@o4510303274926080.ingest.us.sentry.io/4510346730733568",
         integrations=[
             FastApiIntegration(),
             StarletteIntegration(),
         ],
         traces_sample_rate=1.0,  # Adjust in production
         environment=settings.environment,
+        send_default_pii=True,  # Capture request headers and IP for debugging
         before_send=lambda event, hint: event if settings.sentry_dsn else None,
     )
     logger.info("🔔 Sentry error tracking initialized")
@@ -170,3 +171,10 @@ async def root() -> dict[str, str]:
         "docs": "/docs",
         "status": "🚀 Running",
     }
+
+
+@app.get("/sentry-debug")
+async def trigger_error():
+    """Sentry debug endpoint to verify error tracking is working."""
+    division_by_zero = 1 / 0
+    return division_by_zero

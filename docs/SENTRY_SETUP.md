@@ -2,36 +2,62 @@
 
 SmartPlex uses Sentry for error tracking and performance monitoring in both frontend and backend.
 
+## Sentry Projects
+
+We use **2 separate Sentry projects** for better organization:
+
+1. **smartplex-web** (Next.js Frontend)
+   - Organization: `tactiqal`
+   - Project: `smartplex-web`
+   - DSN: `https://0384e7109635342e54c2f9916a6a8daf@o4510303274926080.ingest.us.sentry.io/4510346716643328`
+
+2. **smartplex-api** (Python/FastAPI Backend)
+   - Organization: `tactiqal`
+   - Project: `smartplex-api`
+   - DSN: `https://9352877a711f16edf148d59fd3d7900b@o4510303274926080.ingest.us.sentry.io/4510346730733568`
+
 ## Setup Instructions
 
-### 1. Create Sentry Account
-1. Go to [sentry.io](https://sentry.io) and create a free account
-2. Create a new project for "Next.js" (for frontend) and "Python" (for backend)
-3. Copy your DSN (Data Source Name) from the project settings
+### 1. Frontend (Next.js) - Already Configured ✅
 
-### 2. Configure Environment Variables
+The frontend Sentry SDK is already installed and configured with the DSN.
 
-#### Frontend (apps/web/.env.local)
+**Configuration files:**
+- `apps/web/sentry.client.config.ts` - Client-side tracking
+- `apps/web/sentry.server.config.ts` - Server-side tracking
+- `apps/web/sentry.edge.config.ts` - Edge runtime tracking
+
+**Environment Variables (Optional Override):**
 ```bash
-NEXT_PUBLIC_SENTRY_DSN=https://your-frontend-dsn@sentry.io/project-id
-SENTRY_ORG=your-org-slug
+# apps/web/.env.local
+NEXT_PUBLIC_SENTRY_DSN=https://0384e7109635342e54c2f9916a6a8daf@o4510303274926080.ingest.us.sentry.io/4510346716643328
+SENTRY_ORG=tactiqal
 SENTRY_PROJECT=smartplex-web
 ```
 
-#### Backend (apps/api/.env)
+### 2. Backend (FastAPI) - Already Configured ✅
+
+The backend Sentry SDK is already installed and configured with the DSN.
+
+**Configuration location:**
+- `apps/api/app/main.py` - Sentry initialization with FastAPI integration
+
+**Environment Variables (Optional Override):**
 ```bash
-SENTRY_DSN=https://your-backend-dsn@sentry.io/project-id
+# apps/api/.env
+SENTRY_DSN=https://9352877a711f16edf148d59fd3d7900b@o4510303274926080.ingest.us.sentry.io/4510346730733568
 ```
 
 ### 3. Deploy to Railway
 
-Add the environment variables to your Railway project:
+The DSNs are **hardcoded in the code** as fallback values, so Sentry works out of the box.
 
+**Optional:** To override the DSN in Railway:
 1. Go to Railway dashboard
 2. Select your project
 3. Click on "Variables" tab
 4. Add `SENTRY_DSN` for the API service
-5. Add `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_ORG`, and `SENTRY_PROJECT` for the web service
+5. Add `NEXT_PUBLIC_SENTRY_DSN` for the web service
 
 ## Features
 
@@ -50,16 +76,25 @@ Add the environment variables to your Railway project:
 
 ## Testing
 
-To test Sentry is working:
-
-### Frontend
-Open browser console and run:
+### Frontend Testing
+Open browser console on any authenticated page and run:
 ```javascript
 throw new Error("Test Sentry Error from Frontend");
 ```
 
-### Backend
-Visit: `https://your-api-url/sentry-debug`
+Check errors at: https://tactiqal.sentry.io/issues/?project=4510346716643328
+
+### Backend Testing
+Visit the debug endpoint:
+```bash
+# Local
+curl http://localhost:8000/sentry-debug
+
+# Production
+curl https://smartplexapi-production.up.railway.app/sentry-debug
+```
+
+Check errors at: https://tactiqal.sentry.io/issues/?project=4510346730733568
 
 ## Privacy & Security
 
@@ -80,8 +115,9 @@ For beta testing, Sentry helps track:
 ## Monitoring
 
 View errors in real-time at:
-- Frontend: https://sentry.io/organizations/your-org/issues/?project=smartplex-web
-- Backend: https://sentry.io/organizations/your-org/issues/?project=smartplex-api
+- **Frontend**: https://tactiqal.sentry.io/issues/?project=4510346716643328
+- **Backend**: https://tactiqal.sentry.io/issues/?project=4510346730733568
+- **All Projects**: https://tactiqal.sentry.io/issues/
 
 ## Cost
 

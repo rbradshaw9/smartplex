@@ -115,7 +115,11 @@ export default async function Home() {
               <LoginForm />
               <div className="mt-6 pt-6 border-t border-white/10">
                 <p className="text-slate-400 text-xs text-center">
-                  By signing in, you agree to our beta program terms. 
+                  By signing in, you agree to our{' '}
+                  <a href="/terms" className="text-blue-400 hover:text-blue-300 underline">Terms of Service</a>
+                  {' '}and{' '}
+                  <a href="/privacy" className="text-blue-400 hover:text-blue-300 underline">Privacy Policy</a>.
+                  <br />
                   Your feedback helps us improve!
                 </p>
               </div>
