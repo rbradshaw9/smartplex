@@ -19,7 +19,10 @@ class AIService:
     def __init__(self, settings: Settings):
         """Initialize AI service with OpenAI client."""
         self.settings = settings
-        self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+        self.client = AsyncOpenAI(
+            api_key=settings.openai_api_key,
+            timeout=30.0  # 30 second timeout to prevent hanging
+        )
         self.model = "gpt-4o-mini"  # Fast and cost-effective
         
     async def chat(

@@ -129,14 +129,26 @@ async def chat_with_ai(
         favorite_genres = sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:3]
         favorite_genres = [genre for genre, _ in favorite_genres]
         
+        # Calculate total watch time from media_items (if available from Tautulli sync)
+        total_watch_hours = 0.0
+        if user_stats.data:
+            for stat in user_stats.data:
+                if stat.get('media_items'):
+                    media = stat['media_items']
+                    # Get watch time from Tautulli sync data
+                    watch_time_seconds = media.get('total_watch_time_seconds', 0)
+                    if watch_time_seconds:
+                        total_watch_hours += watch_time_seconds / 3600.0
+        
         # Build enriched user context
         user_context = {
             "user_id": current_user["id"],
             "total_items_watched": len(user_stats.data) if user_stats.data else 0,
             "total_watch_count": total_watch_count,
+            "total_watch_hours": round(total_watch_hours, 1),
             "favorite_genres": favorite_genres,
             "recent_watches": recent_watches,
-            "viewing_summary": f"User has watched {len(user_stats.data)} different titles with {total_watch_count} total views. Favorite genres: {', '.join(favorite_genres) if favorite_genres else 'none yet'}."
+            "viewing_summary": f"User has watched {len(user_stats.data)} different titles with {total_watch_count} total views ({total_watch_hours:.1f} hours total). Favorite genres: {', '.join(favorite_genres) if favorite_genres else 'none yet'}."
         }
         
         # Get recent conversation history (last 5 messages)
@@ -398,7 +410,12 @@ async def get_recommendations(
                 }
                 
                 # Get AI recommendations based on history
-                recommendations = await ai_service.generate_recommendations(user_context, count=limit * 3)  # Request more to account for filtering
+                # Note: core/ai.py generate_recommendations expects (watch_history, available_content, limit)
+                recommendations = await ai_service.generate_recommendations(
+                    watch_history=recent_watches,  # First arg must be watch_history
+                    available_content=None,  # We'll filter manually
+                    limit=limit * 3  # Request more to account for filtering
+                )
                 
                 # Filter out items already in library
                 filtered_recommendations = []
