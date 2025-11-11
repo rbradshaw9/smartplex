@@ -15,11 +15,6 @@ Sentry.init({
 
   // Filter out sensitive data
   beforeSend(event) {
-    // Don't send events if no DSN is configured
-    if (!process.env.NEXT_PUBLIC_SENTRY_DSN) {
-      return null;
-    }
-    
     // Remove API keys and tokens from request data
     if (event.request?.headers) {
       delete event.request.headers['Authorization'];

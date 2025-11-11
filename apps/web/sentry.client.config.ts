@@ -27,11 +27,6 @@ Sentry.init({
 
   // Filter out sensitive data
   beforeSend(event) {
-    // Don't send events if no DSN is configured
-    if (!process.env.NEXT_PUBLIC_SENTRY_DSN) {
-      return null;
-    }
-    
     // Remove sensitive data from breadcrumbs
     if (event.breadcrumbs) {
       event.breadcrumbs = event.breadcrumbs.filter(breadcrumb => {
