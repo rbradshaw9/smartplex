@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from supabase import Client
 
-from app.core.supabase import get_supabase_client, require_admin, get_user_from_token
+from app.core.supabase import get_supabase_client, require_admin
 from app.core.logging import get_logger
 from app.services.tautulli_sync import TautulliSyncService
 from app.services.integrations.tautulli import TautulliService
