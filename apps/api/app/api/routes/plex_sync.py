@@ -210,6 +210,16 @@ async def sync_library_generator(
                                         
                                         file_size_mb = round(file_size_bytes / (1024 * 1024), 2) if file_size_bytes > 0 else None
                                         
+                                        # Get Plex addedAt date (critical for deletion rules)
+                                        plex_added_at = None
+                                        if hasattr(episode, 'addedAt') and episode.addedAt:
+                                            plex_added_at = episode.addedAt.isoformat() if hasattr(episode.addedAt, 'isoformat') else str(episode.addedAt)
+                                        
+                                        # Prepare metadata
+                                        metadata = {}
+                                        if plex_added_at:
+                                            metadata['plex_added_at'] = plex_added_at
+                                        
                                         # Upsert episode to database
                                         media_data = {
                                             'server_id': server_id,
@@ -219,6 +229,7 @@ async def sync_library_generator(
                                             'year': getattr(episode, 'year', None),
                                             'duration_ms': getattr(episode, 'duration', None),
                                             'file_size_bytes': file_size_bytes if file_size_bytes > 0 else None,
+                                            'metadata': metadata if metadata else None,
                                             'tmdb_id': tmdb_id,
                                             'tvdb_id': tvdb_id,
                                             'imdb_id': imdb_id
@@ -298,6 +309,16 @@ async def sync_library_generator(
                                 
                                 file_size_mb = round(file_size_bytes / (1024 * 1024), 2) if file_size_bytes > 0 else None
                                 
+                                # Get Plex addedAt date (critical for deletion rules)
+                                plex_added_at = None
+                                if hasattr(item, 'addedAt') and item.addedAt:
+                                    plex_added_at = item.addedAt.isoformat() if hasattr(item.addedAt, 'isoformat') else str(item.addedAt)
+                                
+                                # Prepare metadata
+                                metadata = {}
+                                if plex_added_at:
+                                    metadata['plex_added_at'] = plex_added_at
+                                
                                 # Upsert to database
                                 media_data = {
                                     'server_id': server_id,
@@ -307,6 +328,7 @@ async def sync_library_generator(
                                     'year': getattr(item, 'year', None),
                                     'duration_ms': getattr(item, 'duration', None),
                                     'file_size_bytes': file_size_bytes if file_size_bytes > 0 else None,
+                                    'metadata': metadata if metadata else None,
                                     'tmdb_id': tmdb_id,
                                     'tvdb_id': tvdb_id,
                                     'imdb_id': imdb_id
