@@ -20,6 +20,7 @@ from plexapi.myplex import MyPlexAccount
 
 from app.core.logging import get_logger
 from app.core.plex_connection import PlexConnectionManager
+from app.core.server_membership import get_server_admin
 
 logger = get_logger("cascade_deletion_service")
 
@@ -304,17 +305,29 @@ class CascadeDeletionService:
         try:
             logger.info(f"{'[DRY RUN] ' if dry_run else ''}Removing from Sonarr: {media_item['title']}")
             
-            # Get Sonarr integration
+            # Get server admin's integration (multi-tenant support)
+            server_id = media_item.get('server_id')
+            if not server_id:
+                logger.warning("No server_id on media item")
+                return {"success": True, "message": "No server_id", "skipped": True}
+            
+            admin_id = await get_server_admin(self.supabase, server_id)
+            if not admin_id:
+                logger.warning(f"No admin found for server {server_id}")
+                return {"success": True, "message": "No server admin", "skipped": True}
+            
+            # Get admin's Sonarr integration
             integration_result = self.supabase.table("integrations")\
                 .select("*")\
-                .eq("user_id", user_id)\
+                .eq("user_id", admin_id)\
+                .eq("server_id", server_id)\
                 .eq("service", "sonarr")\
                 .eq("enabled", True)\
                 .maybe_single()\
                 .execute()
             
             if not integration_result.data:
-                logger.info("No active Sonarr integration found")
+                logger.info(f"No active Sonarr integration found for server {server_id}")
                 return {"success": True, "message": "No Sonarr integration", "skipped": True}
             
             integration = integration_result.data
@@ -381,17 +394,29 @@ class CascadeDeletionService:
         try:
             logger.info(f"{'[DRY RUN] ' if dry_run else ''}Removing from Radarr: {media_item['title']}")
             
-            # Get Radarr integration
+            # Get server admin's integration (multi-tenant support)
+            server_id = media_item.get('server_id')
+            if not server_id:
+                logger.warning("No server_id on media item")
+                return {"success": True, "message": "No server_id", "skipped": True}
+            
+            admin_id = await get_server_admin(self.supabase, server_id)
+            if not admin_id:
+                logger.warning(f"No admin found for server {server_id}")
+                return {"success": True, "message": "No server admin", "skipped": True}
+            
+            # Get admin's Radarr integration
             integration_result = self.supabase.table("integrations")\
                 .select("*")\
-                .eq("user_id", user_id)\
+                .eq("user_id", admin_id)\
+                .eq("server_id", server_id)\
                 .eq("service", "radarr")\
                 .eq("enabled", True)\
                 .maybe_single()\
                 .execute()
             
             if not integration_result.data:
-                logger.info("No active Radarr integration found")
+                logger.info(f"No active Radarr integration found for server {server_id}")
                 return {"success": True, "message": "No Radarr integration", "skipped": True}
             
             integration = integration_result.data
@@ -458,17 +483,29 @@ class CascadeDeletionService:
         try:
             logger.info(f"{'[DRY RUN] ' if dry_run else ''}Removing from Overseerr: {media_item['title']}")
             
-            # Get Overseerr integration
+            # Get server admin's integration (multi-tenant support)
+            server_id = media_item.get('server_id')
+            if not server_id:
+                logger.warning("No server_id on media item")
+                return {"success": True, "message": "No server_id", "skipped": True}
+            
+            admin_id = await get_server_admin(self.supabase, server_id)
+            if not admin_id:
+                logger.warning(f"No admin found for server {server_id}")
+                return {"success": True, "message": "No server admin", "skipped": True}
+            
+            # Get admin's Overseerr integration
             integration_result = self.supabase.table("integrations")\
                 .select("*")\
-                .eq("user_id", user_id)\
+                .eq("user_id", admin_id)\
+                .eq("server_id", server_id)\
                 .eq("service", "overseerr")\
                 .eq("enabled", True)\
                 .maybe_single()\
                 .execute()
             
             if not integration_result.data:
-                logger.info("No active Overseerr integration found")
+                logger.info(f"No active Overseerr integration found for server {server_id}")
                 return {"success": True, "message": "No Overseerr integration", "skipped": True}
             
             integration = integration_result.data
