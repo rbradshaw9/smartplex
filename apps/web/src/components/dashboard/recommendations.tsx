@@ -275,12 +275,16 @@ export function Recommendations({ recommendations, onReload, isLoading = false }
         )}
       </div>
 
-      <div className="mt-6 p-4 bg-blue-600/10 border border-blue-600/20 rounded-lg">
-        <div className="flex items-center space-x-2">
-          <span className="text-blue-400 text-lg">🤖</span>
-          <span className="text-blue-300 text-sm font-medium">
-            AI Tip: These recommendations are based on your viewing history, ratings, and trending content. Use filters to narrow down what you're looking for!
-          </span>
+      <div className="mt-6 p-4 bg-gradient-to-r from-blue-600/10 to-purple-600/10 border border-blue-600/20 rounded-lg">
+        <div className="flex items-start gap-3">
+          <span className="text-blue-400 text-2xl">🤖</span>
+          <div className="flex-1">
+            <h4 className="text-blue-300 text-sm font-semibold mb-1">AI-Powered Recommendations</h4>
+            <p className="text-slate-400 text-xs leading-relaxed">
+              These suggestions are personalized based on your viewing history, ratings, and trending content. 
+              Click "Request" to add titles to your Overseerr queue for automatic download.
+            </p>
+          </div>
         </div>
       </div>
     </div>
