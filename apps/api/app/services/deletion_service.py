@@ -117,11 +117,21 @@ class DeletionService:
             
             logger.info(f"✅ '{item['title']}' passed grace period check ({days_since_added} days old)")
             
-            # Check 2: Inactivity - for beta, assume never watched since we don't have Tautulli yet
-            # TODO: Integrate Tautulli sync for real watch data
-            last_viewed = date_added  # Conservative: use date_added as fallback
-            view_count = 0
-            logger.info(f"  📺 No watch data available (Tautulli not integrated yet), assuming never watched")
+            # Check 2: Inactivity - use Tautulli aggregated stats for server-wide view data
+            # These stats represent ALL Plex users, not just SmartPlex users
+            tautulli_last_watched = item.get('last_watched_at')
+            tautulli_play_count = item.get('total_play_count', 0)
+            
+            if tautulli_last_watched:
+                # Use Tautulli aggregated data (preferred - includes all Plex users)
+                last_viewed = datetime.fromisoformat(tautulli_last_watched.replace('Z', '+00:00'))
+                view_count = tautulli_play_count
+                logger.info(f"  📺 Using Tautulli stats: {view_count} views across all users, last viewed: {last_viewed.isoformat()}")
+            else:
+                # No Tautulli data yet - item likely never watched or Tautulli not synced
+                last_viewed = date_added  # Use date_added as fallback
+                view_count = 0
+                logger.info(f"  📺 No Tautulli data - assuming never watched, using date_added as last_viewed")
             
             days_since_viewed = (now - last_viewed).days
             
