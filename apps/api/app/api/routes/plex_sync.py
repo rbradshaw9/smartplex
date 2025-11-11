@@ -233,30 +233,32 @@ async def sync_library_generator(
                                         except Exception as db_error:
                                             logger.error(f"Failed to upsert episode {title}: {db_error}")
                                         
-                                        # Calculate ETA
-                                        elapsed_seconds = (datetime.now(timezone.utc) - start_time).total_seconds()
-                                        items_per_second = synced_items / elapsed_seconds if elapsed_seconds > 0 else 0
-                                        remaining_items = total_items - synced_items
-                                        eta_seconds = int(remaining_items / items_per_second) if items_per_second > 0 else 0
-                                        
-                                        # Send progress update
-                                        progress_data = {
-                                            "status": "syncing",
-                                            "current": synced_items,
-                                            "total": total_items,
-                                            "title": f"{show_title} - S{episode.seasonNumber:02d}E{episode.episodeNumber:02d}",
-                                            "section": section_name,
-                                            "eta_seconds": eta_seconds,
-                                            "items_per_second": round(items_per_second, 1)
-                                        }
-                                        
-                                        # Add storage update every 100 items
-                                        if synced_items - last_storage_update >= 100:
-                                            storage_stats = await get_current_storage_stats(supabase)
-                                            progress_data["storage"] = storage_stats
-                                            last_storage_update = synced_items
-                                        
-                                        yield f'data: {json.dumps(progress_data)}\n\n'
+                                        # Only send progress update every 10 items to avoid rate limiting
+                                        if synced_items % 10 == 0:
+                                            # Calculate ETA
+                                            elapsed_seconds = (datetime.now(timezone.utc) - start_time).total_seconds()
+                                            items_per_second = synced_items / elapsed_seconds if elapsed_seconds > 0 else 0
+                                            remaining_items = total_items - synced_items
+                                            eta_seconds = int(remaining_items / items_per_second) if items_per_second > 0 else 0
+                                            
+                                            # Send progress update
+                                            progress_data = {
+                                                "status": "syncing",
+                                                "current": synced_items,
+                                                "total": total_items,
+                                                "title": f"{show_title} - S{episode.seasonNumber:02d}E{episode.episodeNumber:02d}",
+                                                "section": section_name,
+                                                "eta_seconds": eta_seconds,
+                                                "items_per_second": round(items_per_second, 1)
+                                            }
+                                            
+                                            # Add storage update every 100 items
+                                            if synced_items - last_storage_update >= 100:
+                                                storage_stats = await get_current_storage_stats(supabase)
+                                                progress_data["storage"] = storage_stats
+                                                last_storage_update = synced_items
+                                            
+                                            yield f'data: {json.dumps(progress_data)}\n\n'
                                         
                                         # Small delay to prevent overwhelming the client
                                         await asyncio.sleep(0.01)
@@ -319,30 +321,32 @@ async def sync_library_generator(
                                 except Exception as db_error:
                                     logger.error(f"Failed to upsert {title}: {db_error}")
                                 
-                                # Calculate ETA
-                                elapsed_seconds = (datetime.now(timezone.utc) - start_time).total_seconds()
-                                items_per_second = synced_items / elapsed_seconds if elapsed_seconds > 0 else 0
-                                remaining_items = total_items - synced_items
-                                eta_seconds = int(remaining_items / items_per_second) if items_per_second > 0 else 0
-                                
-                                # Send progress update
-                                progress_data = {
-                                    "status": "syncing",
-                                    "current": synced_items,
-                                    "total": total_items,
-                                    "title": title,
-                                    "section": section_name,
-                                    "eta_seconds": eta_seconds,
-                                    "items_per_second": round(items_per_second, 1)
-                                }
-                                
-                                # Add storage update every 100 items
-                                if synced_items - last_storage_update >= 100:
-                                    storage_stats = await get_current_storage_stats(supabase)
-                                    progress_data["storage"] = storage_stats
-                                    last_storage_update = synced_items
-                                
-                                yield f'data: {json.dumps(progress_data)}\n\n'
+                                # Only send progress update every 10 items to avoid rate limiting
+                                if synced_items % 10 == 0:
+                                    # Calculate ETA
+                                    elapsed_seconds = (datetime.now(timezone.utc) - start_time).total_seconds()
+                                    items_per_second = synced_items / elapsed_seconds if elapsed_seconds > 0 else 0
+                                    remaining_items = total_items - synced_items
+                                    eta_seconds = int(remaining_items / items_per_second) if items_per_second > 0 else 0
+                                    
+                                    # Send progress update
+                                    progress_data = {
+                                        "status": "syncing",
+                                        "current": synced_items,
+                                        "total": total_items,
+                                        "title": title,
+                                        "section": section_name,
+                                        "eta_seconds": eta_seconds,
+                                        "items_per_second": round(items_per_second, 1)
+                                    }
+                                    
+                                    # Add storage update every 100 items
+                                    if synced_items - last_storage_update >= 100:
+                                        storage_stats = await get_current_storage_stats(supabase)
+                                        progress_data["storage"] = storage_stats
+                                        last_storage_update = synced_items
+                                    
+                                    yield f'data: {json.dumps(progress_data)}\n\n'
                                 
                                 # Small delay to prevent overwhelming the client
                                 await asyncio.sleep(0.01)

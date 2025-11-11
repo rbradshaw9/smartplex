@@ -65,10 +65,8 @@ class DeletionService:
         grace_cutoff = now - timedelta(days=rule['grace_period_days'])
         inactivity_cutoff = now - timedelta(days=rule['inactivity_threshold_days'])
         
-        # Query media items with their stats
-        query = self.supabase.table("media_items").select(
-            "*, user_stats(*)"
-        )
+        # Query media items (without stats for now - Tautulli not integrated yet)
+        query = self.supabase.table("media_items").select("*")
         
         # Apply library exclusions
         if rule.get('excluded_libraries') and len(rule['excluded_libraries']) > 0:
@@ -119,34 +117,11 @@ class DeletionService:
             
             logger.info(f"✅ '{item['title']}' passed grace period check ({days_since_added} days old)")
             
-            # Check 2: Inactivity - use Tautulli aggregated stats for server-wide view data
-            # These stats represent ALL Plex users, not just SmartPlex users
-            tautulli_last_watched = item.get('last_watched_at')
-            tautulli_play_count = item.get('total_play_count', 0)
-            
-            if tautulli_last_watched:
-                # Use Tautulli aggregated data (preferred - includes all Plex users)
-                last_viewed = datetime.fromisoformat(tautulli_last_watched.replace('Z', '+00:00'))
-                view_count = tautulli_play_count
-                logger.info(f"  📺 Using Tautulli stats: {view_count} views across all users, last viewed: {last_viewed.isoformat()}")
-            else:
-                # Fallback to user_stats if Tautulli hasn't synced yet
-                user_stats = item.get('user_stats', [])
-                
-                if not user_stats or len(user_stats) == 0:
-                    # Never watched - still subject to inactivity check
-                    last_viewed = date_added  # Use date_added as fallback
-                    view_count = 0
-                    logger.info(f"  📺 Never watched (no Tautulli or user_stats data), using date_added as last_viewed")
-                else:
-                    # Find most recent view from SmartPlex users only
-                    last_viewed = max(
-                        (datetime.fromisoformat(stat['last_played_at'].replace('Z', '+00:00')) 
-                         for stat in user_stats if stat.get('last_played_at')),
-                        default=date_added
-                    )
-                    view_count = sum(stat.get('play_count', 0) for stat in user_stats)
-                    logger.info(f"  ⚠️ Using fallback user_stats (Tautulli not synced): {view_count} views, last viewed: {last_viewed.isoformat()}")
+            # Check 2: Inactivity - for beta, assume never watched since we don't have Tautulli yet
+            # TODO: Integrate Tautulli sync for real watch data
+            last_viewed = date_added  # Conservative: use date_added as fallback
+            view_count = 0
+            logger.info(f"  📺 No watch data available (Tautulli not integrated yet), assuming never watched")
             
             days_since_viewed = (now - last_viewed).days
             
@@ -248,37 +223,25 @@ class DeletionService:
             
             try:
                 if not dry_run:
-                    logger.warning(f"DELETING: {candidate['title']}")
+                    # TODO: Implement actual deletion via Plex/Sonarr/Radarr APIs
+                    # For now, just log what we would do
                     
-                    # Delete from Plex (always try this first)
-                    if candidate['type'] in ['movie', 'show']:
-                        try:
-                            plex_deleted = await self._delete_from_plex(candidate['plex_id'], candidate['id'])
-                            item_result['deleted_from_plex'] = plex_deleted
-                            if plex_deleted:
-                                logger.info(f"✅ Deleted from Plex: {candidate['title']}")
-                        except Exception as e:
-                            logger.error(f"Failed to delete from Plex: {e}")
+                    # Delete from Plex (via Tautulli or direct Plex API)
+                    # if candidate['type'] in ['movie', 'show']:
+                    #     await self._delete_from_plex(candidate['plex_id'])
+                    #     item_result['deleted_from_plex'] = True
                     
                     # Delete from Sonarr (if TV show)
-                    if candidate['type'] in ['show', 'season', 'episode']:
-                        try:
-                            sonarr_deleted = await self._delete_from_sonarr(candidate['id'])
-                            item_result['deleted_from_sonarr'] = sonarr_deleted
-                            if sonarr_deleted:
-                                logger.info(f"✅ Deleted from Sonarr: {candidate['title']}")
-                        except Exception as e:
-                            logger.error(f"Failed to delete from Sonarr: {e}")
+                    # if candidate['type'] in ['show', 'season', 'episode']:
+                    #     await self._delete_from_sonarr(candidate['id'])
+                    #     item_result['deleted_from_sonarr'] = True
                     
                     # Delete from Radarr (if movie)
-                    if candidate['type'] == 'movie':
-                        try:
-                            radarr_deleted = await self._delete_from_radarr(candidate['id'])
-                            item_result['deleted_from_radarr'] = radarr_deleted
-                            if radarr_deleted:
-                                logger.info(f"✅ Deleted from Radarr: {candidate['title']}")
-                        except Exception as e:
-                            logger.error(f"Failed to delete from Radarr: {e}")
+                    # if candidate['type'] == 'movie':
+                    #     await self._delete_from_radarr(candidate['id'])
+                    #     item_result['deleted_from_radarr'] = True
+                    
+                    pass
                 
                 # Set status based on whether this was a dry run or actual deletion
                 # Valid statuses: 'pending', 'completed', 'failed', 'skipped'
