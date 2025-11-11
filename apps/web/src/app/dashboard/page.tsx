@@ -88,10 +88,35 @@ export default function DashboardPage() {
   }
 
   return (
-    <Dashboard 
-      user={user} 
-      userStats={mockUserStats}
-      recommendations={recommendations}
-    />
+    <>
+      <Dashboard 
+        user={user} 
+        userStats={mockUserStats}
+        recommendations={recommendations}
+      />
+      {/* Hidden Sentry test button - press Shift+Ctrl+S to trigger */}
+      <button
+        onClick={() => {
+          throw new Error("Sentry Test Error - Button Clicked");
+        }}
+        onKeyDown={(e) => {
+          if (e.shiftKey && e.ctrlKey && e.key === 'S') {
+            throw new Error("Sentry Test Error - Keyboard Shortcut");
+          }
+        }}
+        style={{ 
+          position: 'fixed', 
+          bottom: '10px', 
+          right: '10px', 
+          opacity: 0.01,
+          width: '50px',
+          height: '50px',
+          cursor: 'pointer'
+        }}
+        aria-label="Test Sentry"
+      >
+        Test
+      </button>
+    </>
   )
 }

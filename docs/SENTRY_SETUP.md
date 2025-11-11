@@ -83,12 +83,20 @@ The DSNs are **hardcoded in the code** as fallback values, so Sentry works out o
 ## Testing
 
 ### Frontend Testing
-Open browser console on any authenticated page and run:
-```javascript
-throw new Error("Test Sentry Error from Frontend");
-```
+Sentry will automatically capture real errors in your application. To test:
+
+**Option 1: Trigger a real error**
+- Click on a broken feature or navigation that causes an error
+- Any unhandled exceptions will be sent to Sentry automatically
+
+**Option 2: Check debug logs**
+- Open browser console with debug mode enabled
+- Look for `[Sentry]` logs showing initialization
+- Real application errors will be captured automatically
 
 Check errors at: https://tactiqal.sentry.io/issues/?project=4510346716643328
+
+**Note:** Console-thrown errors (`throw new Error()`) are not automatically captured. Sentry captures real application errors from your React components, API calls, and runtime exceptions.
 
 ### Backend Testing
 Visit the debug endpoint:
