@@ -35,19 +35,19 @@ logger = get_logger("main")
 
 # Initialize Sentry for error tracking
 settings = get_settings()
-# Always initialize with fallback DSN
-sentry_dsn = settings.sentry_dsn or "https://9352877a711f16edf148d59fd3d7900b@o4510303274926080.ingest.us.sentry.io/4510346730733568"
-sentry_sdk.init(
-    dsn=sentry_dsn,
-    integrations=[
-        FastApiIntegration(),
-        StarletteIntegration(),
-    ],
-    traces_sample_rate=1.0,  # Adjust in production
-    environment=settings.environment,
-    send_default_pii=True,  # Capture request headers and IP for debugging
-)
-logger.info(f"🔔 Sentry error tracking initialized: {sentry_dsn[:50]}...")
+if settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn or "https://9352877a711f16edf148d59fd3d7900b@o4510303274926080.ingest.us.sentry.io/4510346730733568",
+        integrations=[
+            FastApiIntegration(),
+            StarletteIntegration(),
+        ],
+        traces_sample_rate=1.0,  # Adjust in production
+        environment=settings.environment,
+        send_default_pii=True,  # Capture request headers and IP for debugging
+        before_send=lambda event, hint: event if settings.sentry_dsn else None,
+    )
+    logger.info("🔔 Sentry error tracking initialized")
 
 # Suppress noisy PlexAPI connection logs
 logging.getLogger("plexapi").setLevel(logging.WARNING)
@@ -90,21 +90,19 @@ app = FastAPI(
 settings = get_settings()
 allowed_origins = [
     "http://localhost:3000",  # Next.js dev
+    "https://smartplex-ecru.vercel.app",  # Production frontend
 ]
 
 # Add production origins from environment
 if settings.environment == "production":
     frontend_url = os.getenv("FRONTEND_URL", "https://smartplex-ecru.vercel.app")
-    allowed_origins.append(frontend_url)
-    allowed_origins.append("https://*.vercel.app")  # Vercel preview deployments
-else:
-    # Development: allow all Vercel preview URLs
-    allowed_origins.extend([
-        "https://smartplex-ecru.vercel.app",
-        "https://*.vercel.app",
-    ])
+    if frontend_url not in allowed_origins:
+        allowed_origins.append(frontend_url)
 
 logger.info(f"🔒 CORS allowed origins: {allowed_origins}")
+
+# Allow all Vercel preview deployments using regex
+allow_origin_regex = r"https://.*\.vercel\.app"
 
 
 # Middleware to trust proxy headers (for Railway HTTPS termination)
@@ -123,6 +121,7 @@ app.add_middleware(ProxyHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=allow_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
