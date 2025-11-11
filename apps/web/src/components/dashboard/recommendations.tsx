@@ -61,11 +61,16 @@ export function Recommendations({ recommendations, onReload, isLoading = false }
   
   // Filter recommendations based on selected filters
   const filteredRecommendations = recommendations.filter(item => {
-    // Only filter if a specific type is selected AND the item has a type
-    if (filter !== 'all' && item.type && item.type !== filter) return false
+    // Type filter - match 'movie' or 'series'
+    if (filter !== 'all') {
+      if (!item.type) return false // Skip items without type
+      if (item.type !== filter) return false
+    }
     // Genre filtering would require genre data from API
     return true
   })
+  
+  console.log(`🎭 Filter: ${filter}, Total: ${recommendations.length}, Filtered: ${filteredRecommendations.length}`)
   
   // Extract unique genres from recommendations (if available)
   const availableGenres = ['all', 'action', 'comedy', 'drama', 'sci-fi', 'thriller']

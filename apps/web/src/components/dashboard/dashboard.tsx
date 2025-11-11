@@ -245,8 +245,11 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
                 const recs = recsData.map((rec: any) => ({
                   title: rec.title,
                   reason: rec.reason || 'AI recommended',
+                  type: rec.type,
+                  year: rec.year,
+                  tmdb_id: rec.tmdb_id
                 }))
-                console.log('Setting recommendations:', recs)
+                console.log('🎬 Setting recommendations with types:', recs)
                 setRecommendations(recs)
 
                 // Cache recommendations
@@ -310,8 +313,10 @@ export function Dashboard({ user, userStats: initialStats, recommendations: init
             title: rec.title,
             reason: rec.reason || 'AI recommended',
             type: rec.type,
-            year: rec.year
+            year: rec.year,
+            tmdb_id: rec.tmdb_id
           }))
+          console.log('🎬 Setting new recommendations with types:', recs)
           setRecommendations(recs)
 
           // Update cache

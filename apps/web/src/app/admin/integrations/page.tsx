@@ -24,7 +24,9 @@ export default function IntegrationsPage() {
   const [loading, setLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
   const [testingId, setTestingId] = useState<string | null>(null)
+  const [syncingTautulli, setSyncingTautulli] = useState(false)
   const [error, setError] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
 
   // Form state
   const [formData, setFormData] = useState({
@@ -167,6 +169,47 @@ export default function IntegrationsPage() {
       console.error(err)
     } finally {
       setTestingId(null)
+    }
+  }
+
+  async function syncTautulliData(days: number = 90) {
+    setSyncingTautulli(true)
+    setError('')
+    setSuccessMessage('')
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/admin/sync/tautulli`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ days_back: days })
+        }
+      )
+
+      if (response.ok) {
+        const result = await response.json()
+        setSuccessMessage(
+          `✅ Tautulli sync complete!\n\n` +
+          `Items fetched: ${result.items_fetched}\n` +
+          `Items updated: ${result.items_updated}\n` +
+          `Duration: ${(result.duration_seconds || 0).toFixed(1)}s`
+        )
+      } else {
+        const error = await response.json()
+        setError(error.detail || 'Failed to sync Tautulli data')
+      }
+    } catch (err) {
+      setError('Failed to sync Tautulli data')
+      console.error(err)
+    } finally {
+      setSyncingTautulli(false)
     }
   }
 
@@ -385,6 +428,53 @@ export default function IntegrationsPage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Tautulli Data Sync Section */}
+        {integrations.some(i => i.service === 'tautulli' && i.enabled) && (
+          <div className="bg-slate-800 rounded-lg p-6 mt-6">
+            <h3 className="text-xl font-semibold mb-4">Tautulli Watch History Sync</h3>
+            <p className="text-slate-400 text-sm mb-4">
+              Sync watch statistics from Tautulli to enable intelligent deletion decisions.
+              This populates play counts, last watched dates, and watch durations for all media items.
+            </p>
+            
+            {successMessage && (
+              <div className="bg-green-900/50 border border-green-500 rounded p-3 mb-4 text-sm whitespace-pre-line">
+                {successMessage}
+              </div>
+            )}
+            
+            {error && (
+              <div className="bg-red-900/50 border border-red-500 rounded p-3 mb-4 text-sm">
+                {error}
+              </div>
+            )}
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => syncTautulliData(30)}
+                disabled={syncingTautulli}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed px-4 py-2 rounded text-sm font-medium transition-colors"
+              >
+                {syncingTautulli ? 'Syncing...' : 'Sync Last 30 Days'}
+              </button>
+              <button
+                onClick={() => syncTautulliData(90)}
+                disabled={syncingTautulli}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed px-4 py-2 rounded text-sm font-medium transition-colors"
+              >
+                {syncingTautulli ? 'Syncing...' : 'Sync Last 90 Days'}
+              </button>
+              <button
+                onClick={() => syncTautulliData(365)}
+                disabled={syncingTautulli}
+                className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:cursor-not-allowed px-4 py-2 rounded text-sm font-medium transition-colors"
+              >
+                {syncingTautulli ? 'Syncing...' : 'Sync Last Year'}
+              </button>
+            </div>
           </div>
         )}
       </div>
