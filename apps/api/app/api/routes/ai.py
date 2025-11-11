@@ -394,14 +394,14 @@ async def get_recommendations(
                 existing_titles = set()
                 existing_tmdb_ids = set()
                 existing_imdb_ids = set()
-                if media_items_result.data:
-                    for item in media_items_result.data:
-                        if item.get('title'):
-                            existing_titles.add(item['title'].lower())
-                        if item.get('tmdb_id'):
-                            existing_tmdb_ids.add(str(item['tmdb_id']))
-                        if item.get('imdb_id'):
-                            existing_imdb_ids.add(str(item['imdb_id']))
+                if media_items_result.data:  # type: ignore
+                    for item in media_items_result.data:  # type: ignore
+                        if item.get('title'):  # type: ignore
+                            existing_titles.add(item['title'].lower())  # type: ignore
+                        if item.get('tmdb_id'):  # type: ignore
+                            existing_tmdb_ids.add(str(item['tmdb_id']))  # type: ignore
+                        if item.get('imdb_id'):  # type: ignore
+                            existing_imdb_ids.add(str(item['imdb_id']))  # type: ignore
                 
                 user_context["existing_library"] = {
                     "titles": list(existing_titles),

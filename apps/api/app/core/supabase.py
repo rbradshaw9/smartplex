@@ -72,7 +72,7 @@ async def get_current_user(
         # Verify JWT token with Supabase
         response = supabase.auth.get_user(credentials.credentials)
         
-        if not response.user:
+        if not response or not response.user:  # type: ignore
             raise AuthenticationException(
                 message="Invalid or expired token",
                 details="User not found in token"

@@ -115,7 +115,7 @@ async def system_stats(
         tables = ['users', 'servers', 'media_items', 'deletion_events', 'sync_events']
         for table in tables:
             try:
-                result = supabase.table(table).select('id', count='exact').limit(1).execute()
+                result = supabase.table(table).select('id', count='exact').limit(1).execute()  # type: ignore
                 stats["counts"][table] = result.count if hasattr(result, 'count') else 0
             except:
                 stats["counts"][table] = 0
