@@ -1,43 +1,25 @@
 """
 Streaming Plex Library Sync with Real-Time Progress.
 
-## Overview
-
-SmartPlex uses webhooks to automatically sync data when events occur in your media stack.Uses Server-Sent Events (SSE) to stream sync progress to the client.
-
+Uses Server-Sent Events (SSE) to stream sync progress to the client.
+See WEBHOOKS_SETUP.md for webhook configuration details.
 """
 
-## 1. Plex Webhooks (Watch History)
-
 import asyncio
-
-**Purpose**: Auto-sync Tautulli watch stats when playback completesimport json
-
+import json
 from datetime import datetime, timezone
+from typing import AsyncGenerator
 
-**Setup**:from typing import AsyncGenerator
-
-1. Go to Plex Web → Settings → Webhooks
-
-2. Click "+ ADD WEBHOOK"from fastapi import APIRouter, Depends, HTTPException, Query
-
-3. Enter: `https://your-railway-api.up.railway.app/api/webhooks/plex`from fastapi.responses import StreamingResponse
-
-4. Click "SAVE CHANGES"from plexapi.myplex import MyPlexAccount
-
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from plexapi.myplex import MyPlexAccount
 from supabase import Client
 
-**Triggered Events**:
-
-- `media.scrobble` - Playback completed (90%+ watched)from app.core.supabase import get_supabase_client, get_current_user
-
-- `media.rate` - User rated contentfrom app.core.logging import get_logger
-
+from app.core.supabase import get_supabase_client, get_current_user
+from app.core.logging import get_logger
 from app.core.plex_connection import PlexConnectionManager
 
-**What it does**:
-
-- Triggers background Tautulli sync for the user who watchedrouter = APIRouter()
+router = APIRouter()
 
 - Updates `total_play_count`, `last_watched_at`, `total_watch_time_seconds` on media_itemslogger = get_logger("plex.sync")
 
