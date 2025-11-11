@@ -92,7 +92,11 @@ export default function DeletionManagementPage() {
   useEffect(() => {
     // Run auth check, rules loading, and storage info in parallel
     Promise.all([checkAuth(), loadRules(), loadStorageInfo()])
-      .catch(err => console.error('Init error:', err))
+      .catch(err => {
+        console.error('Init error:', err)
+        setError('Failed to load page. Please refresh.')
+        setLoading(false)
+      })
   }, [])
 
   async function checkAuth() {
