@@ -858,12 +858,12 @@ Type "DELETE" below to confirm:`
             <div className="w-full bg-slate-700 rounded-full h-2.5">
               <div 
                 className="bg-gradient-to-r from-purple-500 to-purple-400 h-2.5 rounded-full transition-all duration-300"
-                style={{ width: `${syncProgress.total > 0 ? (syncProgress.current / syncProgress.total) * 100 : 0}%` }}
+                style={{ width: `${syncProgress.total > 0 ? Math.min((syncProgress.current / syncProgress.total) * 100, 100) : 0}%` }}
               />
             </div>
             <div className="flex justify-between text-xs text-slate-500 mt-1">
-              <span>{((syncProgress.current / syncProgress.total) * 100).toFixed(1)}%</span>
-              <span>{syncProgress.total - syncProgress.current} remaining</span>
+              <span>{syncProgress.total > 0 ? Math.min((syncProgress.current / syncProgress.total) * 100, 100).toFixed(1) : 0}%</span>
+              <span>{Math.max(syncProgress.total - syncProgress.current, 0)} remaining</span>
             </div>
           </div>
         )}

@@ -87,14 +87,23 @@ async def sync_library_generator(
                 sections = server.library.sections()
                 movie_sections = [s for s in sections if s.type in ['movie', 'show']]
                 
-                # Count total items first
+                # Count total items first (episodes for shows, movies for movies)
                 yield f'data: {{"status": "counting", "message": "Counting library items..."}}\n\n'
                 
                 for section in movie_sections:
                     try:
-                        section_size = section.totalSize
-                        total_items += section_size
-                    except:
+                        if section.type == 'show':
+                            # Count episodes, not shows
+                            for show in section.all():
+                                try:
+                                    total_items += len(show.episodes())
+                                except:
+                                    pass
+                        else:
+                            # Count movies directly
+                            total_items += section.totalSize
+                    except Exception as e:
+                        logger.warning(f"Failed to count section {section.title}: {e}")
                         pass
                 
                 yield f'data: {{"status": "syncing", "total": {total_items}, "current": 0, "message": "Starting sync..."}}\n\n'

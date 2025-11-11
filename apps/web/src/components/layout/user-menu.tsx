@@ -119,26 +119,36 @@ export function UserMenu({ user, isAdmin }: UserMenuProps) {
           {/* Admin Section (only for admins) */}
           {isAdmin && (
             <>
-              <div className="px-2 py-2">
-                <button
-                  onClick={() => handleNavigation('/admin/integrations')}
-                  className={`w-full flex items-center px-3 py-2.5 rounded-lg transition-colors ${
-                    isAdminPath
-                      ? 'bg-purple-600 text-white'
-                      : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-                  }`}
-                >
-                  <span className="text-xl mr-3">⚙️</span>
-                  <div className="text-left flex-1">
-                    <div className="text-sm font-medium">Administration</div>
-                    <div className="text-xs opacity-75">
-                      Server management & settings
+              <div className="px-2 py-2 space-y-1">
+                {isAdminPath ? (
+                  // Show "Return to Dashboard" when in admin mode
+                  <button
+                    onClick={() => handleNavigation('/dashboard')}
+                    className="w-full flex items-center px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                  >
+                    <span className="text-xl mr-3">👤</span>
+                    <div className="text-left flex-1">
+                      <div className="text-sm font-medium">Return to Dashboard</div>
+                      <div className="text-xs opacity-75">
+                        Exit admin mode
+                      </div>
                     </div>
-                  </div>
-                  {isAdminPath && (
-                    <span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse"></span>
-                  )}
-                </button>
+                  </button>
+                ) : (
+                  // Show "Administration" when in user mode
+                  <button
+                    onClick={() => handleNavigation('/admin/integrations')}
+                    className="w-full flex items-center px-3 py-2.5 rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                  >
+                    <span className="text-xl mr-3">⚙️</span>
+                    <div className="text-left flex-1">
+                      <div className="text-sm font-medium">Administration</div>
+                      <div className="text-xs opacity-75">
+                        Server management & settings
+                      </div>
+                    </div>
+                  </button>
+                )}
               </div>
               <div className="border-t border-slate-700 my-2"></div>
             </>

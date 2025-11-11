@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { Database } from '@smartplex/db/types'
 
 interface RecommendationsProps {
   recommendations: Array<{
@@ -8,6 +10,7 @@ interface RecommendationsProps {
     reason: string
     type?: string
     year?: number
+    tmdb_id?: number
   }>
   onReload?: () => void
   isLoading?: boolean
@@ -18,6 +21,10 @@ export function Recommendations({ recommendations, onReload, isLoading = false }
   
   const [filter, setFilter] = useState<'all' | 'movie' | 'series'>('all')
   const [genreFilter, setGenreFilter] = useState<string>('all')
+  const [requestingIndex, setRequestingIndex] = useState<number | null>(null)
+  const [requestedIndices, setRequestedIndices] = useState<Set<number>>(new Set())
+  const [visibleCount, setVisibleCount] = useState(5)
+  const supabase = createClientComponentClient<Database>()
   
   // Filter recommendations based on selected filters
   const filteredRecommendations = recommendations.filter(item => {
@@ -29,6 +36,96 @@ export function Recommendations({ recommendations, onReload, isLoading = false }
   
   // Extract unique genres from recommendations (if available)
   const availableGenres = ['all', 'action', 'comedy', 'drama', 'sci-fi', 'thriller']
+  
+  const handleRequest = async (item: typeof recommendations[0], index: number) => {
+    setRequestingIndex(index)
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        alert('Please sign in to make requests')
+        return
+      }
+      
+      // Search for the media in Overseerr via our API
+      const searchResponse = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/integrations/overseerr/search?query=${encodeURIComponent(item.title)}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        }
+      )
+      
+      if (!searchResponse.ok) {
+        throw new Error('Search failed')
+      }
+      
+      const searchResults = await searchResponse.json()
+      
+      // Find the best match (exact title + year match if available)
+      let bestMatch = searchResults.results?.[0]
+      if (item.year && searchResults.results) {
+        const yearStr = item.year.toString()
+        const yearMatch = searchResults.results.find((r: any) => 
+          (r.name === item.title && r.first_air_date?.startsWith(yearStr)) ||
+          (r.title === item.title && r.release_date?.startsWith(yearStr))
+        )
+        if (yearMatch) bestMatch = yearMatch
+      }
+      
+      if (!bestMatch) {
+        alert('❌ Could not find this title in TMDB. Try searching manually in Overseerr.')
+        return
+      }
+      
+      // Create request in Overseerr
+      const mediaType = item.type === 'series' ? 'tv' : 'movie'
+      const mediaId = bestMatch.id
+      
+      const requestResponse = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/integrations/overseerr/request`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            media_type: mediaType,
+            media_id: mediaId,
+            is_4k: false,
+          }),
+        }
+      )
+      
+      if (requestResponse.ok) {
+        const result = await requestResponse.json()
+        setRequestedIndices(prev => {
+          const newSet = new Set(prev)
+          newSet.add(index)
+          return newSet
+        })
+        alert(`✅ Successfully requested: ${item.title}\n\nRequest ID: ${result.id}\nStatus: ${result.status}`)
+      } else {
+        const error = await requestResponse.json()
+        if (error.detail?.includes('already exists')) {
+          alert(`ℹ️ "${item.title}" has already been requested or is available!`)
+        } else {
+          throw new Error(error.detail || 'Request failed')
+        }
+      }
+    } catch (error: any) {
+      console.error('Request error:', error)
+      alert(`❌ Failed to request "${item.title}": ${error.message}`)
+    } finally {
+      setRequestingIndex(null)
+    }
+  }
+  
+  const handleLoadMore = () => {
+    setVisibleCount(prev => prev + 5)
+  }
   
   return (
     <div className="bg-slate-800 rounded-lg p-6">
@@ -110,29 +207,64 @@ export function Recommendations({ recommendations, onReload, isLoading = false }
       
       <div className="space-y-4">
         {filteredRecommendations && filteredRecommendations.length > 0 ? (
-          filteredRecommendations.map((item, index) => (
-            <div key={index} className="bg-slate-700 rounded-lg p-4 hover:bg-slate-600/50 transition-colors">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-white font-medium">{item.title}</h3>
-                    {item.year && (
-                      <span className="text-slate-500 text-sm">({item.year})</span>
-                    )}
-                    {item.type && (
-                      <span className="text-xs px-2 py-1 rounded bg-slate-600 text-slate-300">
-                        {item.type === 'movie' ? '🎬' : '📺'} {item.type}
-                      </span>
-                    )}
+          <>
+            {filteredRecommendations.slice(0, visibleCount).map((item, index) => (
+              <div key={index} className="bg-slate-700 rounded-lg p-4 hover:bg-slate-600/50 transition-colors">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-white font-medium">{item.title}</h3>
+                      {item.year && (
+                        <span className="text-slate-500 text-sm">({item.year})</span>
+                      )}
+                      {item.type && (
+                        <span className="text-xs px-2 py-1 rounded bg-slate-600 text-slate-300">
+                          {item.type === 'movie' ? '🎬' : '📺'} {item.type}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-slate-400 text-sm mt-2">{item.reason}</p>
                   </div>
-                  <p className="text-slate-400 text-sm mt-2 line-clamp-2">{item.reason}</p>
+                  <button 
+                    onClick={() => handleRequest(item, index)}
+                    disabled={requestingIndex === index || requestedIndices.has(index)}
+                    className={`px-4 py-2 rounded-lg text-sm transition-colors flex-shrink-0 ${
+                      requestedIndices.has(index)
+                        ? 'bg-green-600 text-white cursor-default'
+                        : requestingIndex === index
+                        ? 'bg-blue-800 text-white cursor-wait'
+                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                    }`}
+                  >
+                    {requestedIndices.has(index) ? (
+                      <>✓ Requested</>
+                    ) : requestingIndex === index ? (
+                      <>
+                        <svg className="animate-spin inline h-4 w-4" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                      </>
+                    ) : (
+                      'Request'
+                    )}
+                  </button>
                 </div>
-                <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition-colors flex-shrink-0">
-                  Request
+              </div>
+            ))}
+            
+            {/* Load More Button */}
+            {visibleCount < filteredRecommendations.length && (
+              <div className="text-center pt-4">
+                <button
+                  onClick={handleLoadMore}
+                  className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-6 py-2 rounded-lg text-sm font-medium transition-colors"
+                >
+                  Load More ({filteredRecommendations.length - visibleCount} remaining)
                 </button>
               </div>
-            </div>
-          ))
+            )}
+          </>
         ) : (
           <div className="bg-slate-700/50 rounded-lg p-8 text-center">
             <div className="text-4xl mb-3">🎬</div>

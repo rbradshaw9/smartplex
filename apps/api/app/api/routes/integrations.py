@@ -412,3 +412,143 @@ async def get_integration_health(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get integration health"
         )
+
+
+# ============================================
+# Overseerr-specific endpoints
+# ============================================
+
+class OverseerrSearchRequest(BaseModel):
+    """Request model for Overseerr search."""
+    query: str = Field(..., min_length=1, description="Search query")
+
+
+class OverseerrRequestCreate(BaseModel):
+    """Request model for creating Overseerr request."""
+    media_type: str = Field(..., pattern="^(movie|tv)$", description="Media type")
+    media_id: int = Field(..., description="TMDB ID")
+    seasons: List[int] | None = Field(None, description="Season numbers for TV shows")
+    is_4k: bool = Field(default=False, description="Request 4K quality")
+
+
+@router.get("/overseerr/search")
+async def search_overseerr(
+    query: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
+):
+    """
+    Search for media in Overseerr/TMDB.
+    
+    Args:
+        query: Search query
+        current_user: Authenticated user
+        supabase: Database client
+        
+    Returns:
+        Search results from TMDB
+    """
+    try:
+        # Get user's Overseerr integration
+        result = supabase.table('integrations')\
+            .select('*')\
+            .eq('user_id', current_user['id'])\
+            .eq('service', 'overseerr')\
+            .eq('status', 'active')\
+            .limit(1)\
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No active Overseerr integration found. Please configure Overseerr in admin settings."
+            )
+        
+        integration = result.data[0]
+        overseerr = OverseerrService(
+            url=integration['url'],
+            api_key=integration['api_key']
+        )
+        
+        search_results = await overseerr.search_media(query)
+        return search_results
+        
+    except HTTPException:
+        raise
+    except IntegrationException as e:
+        logger.error(f"Overseerr search error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Overseerr search failed: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Error searching Overseerr: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to search media"
+        )
+
+
+@router.post("/overseerr/request")
+async def create_overseerr_request(
+    request_data: OverseerrRequestCreate,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
+):
+    """
+    Create a media request in Overseerr.
+    
+    Args:
+        request_data: Request details
+        current_user: Authenticated user
+        supabase: Database client
+        
+    Returns:
+        Created request information
+    """
+    try:
+        # Get user's Overseerr integration
+        result = supabase.table('integrations')\
+            .select('*')\
+            .eq('user_id', current_user['id'])\
+            .eq('service', 'overseerr')\
+            .eq('status', 'active')\
+            .limit(1)\
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No active Overseerr integration found. Please configure Overseerr in admin settings."
+            )
+        
+        integration = result.data[0]
+        overseerr = OverseerrService(
+            url=integration['url'],
+            api_key=integration['api_key']
+        )
+        
+        # Create the request
+        request_result = await overseerr.create_request(
+            media_type=request_data.media_type,
+            media_id=request_data.media_id,
+            seasons=request_data.seasons,
+            is_4k=request_data.is_4k
+        )
+        
+        return request_result
+        
+    except HTTPException:
+        raise
+    except IntegrationException as e:
+        logger.error(f"Overseerr request error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Overseerr request failed: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Error creating Overseerr request: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create request"
+        )
