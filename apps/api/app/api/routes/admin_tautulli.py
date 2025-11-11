@@ -161,7 +161,7 @@ async def trigger_tautulli_sync(
 @router.get("/sync/tautulli/stream")
 async def stream_tautulli_sync(
     days_back: int = Query(default=90, ge=1, le=365, description="Number of days of history to sync"),
-    admin_user: Dict[str, Any] = Depends(require_admin),
+    auth_token: str = Query(..., description="Supabase auth token for SSE"),
     supabase: Client = Depends(get_supabase_client)
 ):
     """
@@ -172,6 +172,9 @@ async def stream_tautulli_sync(
     
     **Requires admin role.**
     
+    Note: EventSource doesn't support custom headers, so we pass auth token as query param.
+    This is only for SSE endpoints where headers aren't supported.
+    
     Event format:
     - status: "connecting", "syncing", "complete", "error"
     - current: number of items processed
@@ -179,6 +182,29 @@ async def stream_tautulli_sync(
     - message: status message
     - eta_seconds: estimated time remaining
     """
+    
+    # Validate auth token and check admin role since EventSource can't send Authorization header
+    try:
+        user_response = supabase.auth.get_user(auth_token)
+        if not user_response or not user_response.user:
+            raise HTTPException(status_code=401, detail="Invalid auth token")
+        
+        # Get user details and check admin role
+        user_result = supabase.table('users').select('*').eq('id', user_response.user.id).single().execute()
+        if not user_result.data:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        admin_user = user_result.data
+        
+        # Check admin role
+        if not admin_user.get('is_admin'):
+            raise HTTPException(status_code=403, detail="Admin access required")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Auth validation failed: {e}")
+        raise HTTPException(status_code=403, detail="Authentication failed")
     
     async def event_generator() -> AsyncGenerator[str, None]:
         try:
