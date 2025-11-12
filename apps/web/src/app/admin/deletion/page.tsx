@@ -856,11 +856,14 @@ Type "DELETE" below to confirm:`
         loadStorageInfo()
       } else {
         const error = await response.json()
-        setError(error.detail || 'Failed to execute deletion')
+        const errorMsg = `API Error (${response.status}): ${error.detail || 'Failed to execute deletion'}`
+        setError(errorMsg)
+        console.error('Deletion failed:', response.status, error)
       }
     } catch (err) {
-      setError('Failed to execute deletion')
-      console.error(err)
+      const errorMsg = `Network Error: ${err instanceof Error ? err.message : 'Failed to execute deletion'}`
+      setError(errorMsg)
+      console.error('Deletion exception:', err)
     } finally {
       setExecuting(false)
     }
