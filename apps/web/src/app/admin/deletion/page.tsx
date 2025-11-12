@@ -137,6 +137,16 @@ export default function DeletionManagementPage() {
       })
   }, [])
 
+  // Cleanup progress polling on unmount
+  useEffect(() => {
+    return () => {
+      if (progressPollInterval.current) {
+        clearInterval(progressPollInterval.current)
+        progressPollInterval.current = null
+      }
+    }
+  }, [])
+
   async function checkAuth() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) {
@@ -792,6 +802,43 @@ Type "DELETE" below to confirm:`
     setSelectedCandidates(newSelected)
   }
 
+  // Poll for deletion progress
+  const pollDeletionProgress = async (accessToken: string) => {
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/admin/deletion/progress`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        }
+      )
+      
+      if (response.ok) {
+        const data = await response.json()
+        setDeletionProgress({
+          current: data.current || 0,
+          total: data.total || 0,
+          deleted: data.deleted || 0,
+          failed: data.failed || 0,
+          currentItem: data.currentItem || '',
+          status: data.status || 'processing',
+          message: data.message || ''
+        })
+        
+        // Stop polling when completed or error
+        if (data.status === 'completed' || data.status === 'error') {
+          if (progressPollInterval.current) {
+            clearInterval(progressPollInterval.current)
+            progressPollInterval.current = null
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error polling progress:', error)
+    }
+  }
+
   const deleteSelected = async (dryRun: boolean = false) => {
     if (selectedCandidates.size === 0) {
       alert('Please select at least one item to delete')
@@ -839,7 +886,25 @@ Type "DELETE" below to confirm:`
         return
       }
 
-      const response = await fetch(
+      // Show progress modal and initialize
+      setShowProgressModal(true)
+      setDeletionProgress({
+        current: 0,
+        total: selectedCandidates.size,
+        deleted: 0,
+        failed: 0,
+        currentItem: '',
+        status: 'processing',
+        message: `Starting deletion of ${selectedCandidates.size} items...`
+      })
+      
+      // Start polling for progress updates every second
+      progressPollInterval.current = setInterval(() => {
+        pollDeletionProgress(session.access_token)
+      }, 1000)
+
+      // Start the deletion (runs in background)
+      fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/admin/deletion/execute`,
         {
           method: 'POST',
@@ -854,41 +919,49 @@ Type "DELETE" below to confirm:`
             plex_token: plexToken
           })
         }
-      )
-
-      if (response.ok) {
-        const results = await response.json()
-        const { deleted, failed, total_size_mb } = results.results
-        
-        if (dryRun) {
-          alert(`✅ Dry Run Complete!\n\n` +
-                `Would delete: ${deleted} items\n` +
-                `Failed: ${failed} items\n` +
-                `Space to free: ${(total_size_mb / 1024).toFixed(2)} GB`)
+      ).then(async (response) => {
+        if (response.ok) {
+          // Clear selection and reload
+          setSelectedCandidates(new Set())
+          setScanResults(null)
+          loadRules()
+          loadStorageInfo()
         } else {
-          alert(`✅ Deletion Complete!\n\n` +
-                `Deleted: ${deleted} items\n` +
-                `Failed: ${failed} items\n` +
-                `Space freed: ${(total_size_mb / 1024).toFixed(2)} GB`)
+          const error = await response.json()
+          setError(`Failed: ${error.detail || 'Unknown error'}`)
+          setDeletionProgress(prev => ({
+            ...prev,
+            status: 'error',
+            message: error.detail || 'Deletion failed'
+          }))
+          if (progressPollInterval.current) {
+            clearInterval(progressPollInterval.current)
+            progressPollInterval.current = null
+          }
         }
-        
-        // Clear selection and rescan
-        setSelectedCandidates(new Set())
-        setScanResults(null)
-        loadRules()
-        loadStorageInfo()
-      } else {
-        const error = await response.json()
-        const errorMsg = `API Error (${response.status}): ${error.detail || 'Failed to execute deletion'}`
-        setError(errorMsg)
-        console.error('Deletion failed:', response.status, error)
-      }
+        setExecuting(false)
+      }).catch((err) => {
+        setError(`Network Error: ${err instanceof Error ? err.message : 'Failed'}`)
+        setDeletionProgress(prev => ({
+          ...prev,
+          status: 'error',
+          message: 'Network error occurred'
+        }))
+        if (progressPollInterval.current) {
+          clearInterval(progressPollInterval.current)
+          progressPollInterval.current = null
+        }
+        setExecuting(false)
+      })
+
     } catch (err) {
-      const errorMsg = `Network Error: ${err instanceof Error ? err.message : 'Failed to execute deletion'}`
+      const errorMsg = `Error: ${err instanceof Error ? err.message : 'Failed to execute deletion'}`
       setError(errorMsg)
-      console.error('Deletion exception:', err)
-    } finally {
       setExecuting(false)
+      if (progressPollInterval.current) {
+        clearInterval(progressPollInterval.current)
+        progressPollInterval.current = null
+      }
     }
   }
 
@@ -1617,6 +1690,14 @@ Type "DELETE" below to confirm:`
           </div>
         )}
       </div>
+
+      {/* Deletion Progress Modal */}
+      <DeletionProgressModal
+        isOpen={showProgressModal}
+        onClose={() => setShowProgressModal(false)}
+        isDryRun={false}
+        progress={deletionProgress}
+      />
     </div>
   )
 }
