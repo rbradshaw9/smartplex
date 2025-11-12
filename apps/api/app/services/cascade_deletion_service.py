@@ -228,25 +228,34 @@ class CascadeDeletionService:
     ) -> Dict[str, Any]:
         """Delete item from Plex library."""
         try:
-            logger.info(f"{'[DRY RUN] ' if dry_run else ''}Deleting from Plex: {media_item['title']}")
+            logger.info(f"{'[DRY RUN] ' if dry_run else ''}🎬 PLEX DELETION STARTING: {media_item['title']} (plex_id: {media_item.get('plex_id')})")
+            logger.info(f"  Token provided: {bool(plex_token)}, Dry run: {dry_run}")
             
             # Check if plex_token is provided
             if not plex_token:
-                logger.warning("Plex token not available - skipping Plex deletion")
+                logger.warning("❌ Plex token not available - skipping Plex deletion")
                 return {
                     "success": True, 
                     "message": "Plex token not available - deletion from *arr services will proceed, manual Plex cleanup required",
                     "skipped": True
                 }
             
+            logger.info(f"  ✅ Plex token received (length: {len(plex_token)})")
+            
             # Get server details
+            logger.info(f"  📡 Fetching server details for: {media_item['server_id']}")
             server_result = self.supabase.table("servers").select("*").eq("id", media_item['server_id']).single().execute()
             if not server_result.data:
+                logger.error("  ❌ Server not found in database")
                 return {"success": False, "error": "Server not found"}
             
             server_data = server_result.data
+            logger.info(f"  ✅ Server found: {server_data.get('name', 'Unknown')}, URL: {server_data.get('preferred_connection_url', 'None')}")
+            
+            logger.info(f"  ✅ Server found: {server_data.get('name', 'Unknown')}, URL: {server_data.get('preferred_connection_url', 'None')}")
             
             if dry_run:
+                logger.info(f"  🔍 DRY RUN - Would delete '{media_item['title']}' from Plex")
                 return {
                     "success": True,
                     "message": f"Would delete '{media_item['title']}' (plex_id: {media_item['plex_id']}) from Plex",
@@ -254,29 +263,38 @@ class CascadeDeletionService:
                 }
             
             # Connect to Plex
+            logger.info(f"  🔌 Connecting to Plex server...")
             if server_data.get('preferred_connection_url'):
+                logger.info(f"  Using preferred URL: {server_data['preferred_connection_url']}")
                 server = PlexServer(
                     baseurl=server_data['preferred_connection_url'],
                     token=plex_token,
                     timeout=10
                 )
+                logger.info(f"  ✅ Connected to Plex server via preferred URL")
             else:
-                # Fallback to MyPlex
+                logger.info(f"  Using MyPlex fallback...")
                 account = MyPlexAccount(token=plex_token)
                 for resource in account.resources():
                     if resource.clientIdentifier == server_data['machine_id']:
                         server = await self.conn_manager.connect_to_server(resource, plex_token, user_id)
                         break
                 else:
+                    logger.error(f"  ❌ Could not find server in MyPlex resources")
                     return {"success": False, "error": "Could not connect to Plex server"}
+                logger.info(f"  ✅ Connected to Plex server via MyPlex")
             
             # Find and delete the item
+            logger.info(f"  🔍 Fetching Plex item with rating key: {media_item['plex_id']}")
             try:
                 # Fetch the item by rating key (plex_id)
                 item = server.fetchItem(int(media_item['plex_id']))
+                logger.info(f"  ✅ Found Plex item: {item.title}")
                 
                 # Delete it
+                logger.info(f"  🗑️  CALLING item.delete() for '{item.title}'...")
                 item.delete()
+                logger.info(f"  ✅ Plex API delete() completed successfully")
                 
                 # Also delete from our database to prevent re-scanning
                 try:
