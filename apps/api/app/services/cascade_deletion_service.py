@@ -336,8 +336,6 @@ class CascadeDeletionService:
                 return {"success": True, "message": "No Sonarr integration", "skipped": True}
             
             integration = integration_result.data[0]
-            
-            integration = integration_result.data
             tvdb_id = media_item.get('tvdb_id')
             
             if not tvdb_id:
@@ -427,8 +425,6 @@ class CascadeDeletionService:
                 return {"success": True, "message": "No Radarr integration", "skipped": True}
             
             integration = integration_result.data[0]
-            
-            integration = integration_result.data
             tmdb_id = media_item.get('tmdb_id')
             
             if not tmdb_id:
@@ -518,8 +514,6 @@ class CascadeDeletionService:
                 return {"success": True, "message": "No Overseerr integration", "skipped": True}
             
             integration = integration_result.data[0]
-            
-            integration = integration_result.data
             tmdb_id = media_item.get('tmdb_id')
             media_type = "tv" if media_item.get('type') in ['show', 'season', 'episode'] else "movie"
             
