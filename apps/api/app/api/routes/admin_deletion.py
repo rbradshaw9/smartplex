@@ -82,6 +82,7 @@ class ExecuteDeletionRequest(BaseModel):
     rule_id: str
     candidate_ids: Optional[List[str]] = None  # If None, deletes all candidates from last scan
     dry_run: bool = False
+    plex_token: Optional[str] = None  # Plex token for deletion operations
 
 
 @router.get("/rules", response_model=List[DeletionRuleResponse])
@@ -454,7 +455,8 @@ async def execute_deletion(
                     user_id=admin_user["id"],
                     deletion_rule_id=str(request.rule_id),
                     deletion_reason=f"rule_{request.rule_id}",
-                    dry_run=request.dry_run
+                    dry_run=request.dry_run,
+                    plex_token=request.plex_token
                 )
                 
                 deletion_results.append(result)

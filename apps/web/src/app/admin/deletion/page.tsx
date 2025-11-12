@@ -817,6 +817,14 @@ Type "DELETE" below to confirm:`
       const { data: { session } } = await supabase.auth.getSession()
       if (!session || !scanResults) return
 
+      // Get Plex token from localStorage
+      const plexToken = localStorage.getItem('plex_token')
+      if (!plexToken) {
+        setError('Plex token not found. Please reconnect to your Plex server.')
+        setExecuting(false)
+        return
+      }
+
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/admin/deletion/execute`,
         {
@@ -828,7 +836,8 @@ Type "DELETE" below to confirm:`
           body: JSON.stringify({ 
             rule_id: scanResults.rule_id, 
             dry_run: dryRun,
-            candidate_ids: Array.from(selectedCandidates)
+            candidate_ids: Array.from(selectedCandidates),
+            plex_token: plexToken
           })
         }
       )

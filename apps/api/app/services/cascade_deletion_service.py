@@ -45,7 +45,8 @@ class CascadeDeletionService:
         user_id: str,
         deletion_rule_id: Optional[str] = None,
         deletion_reason: str = "manual",
-        dry_run: bool = False
+        dry_run: bool = False,
+        plex_token: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Delete a media item from all integrated systems.
@@ -56,6 +57,7 @@ class CascadeDeletionService:
             deletion_rule_id: Optional deletion rule that triggered this
             deletion_reason: Why it's being deleted
             dry_run: If True, log what would happen without actually deleting
+            plex_token: Plex authentication token for deletion operations
             
         Returns:
             Dict with deletion results and status
@@ -98,7 +100,8 @@ class CascadeDeletionService:
             plex_result = await self._delete_from_plex(
                 media_item=media_item,
                 user_id=user_id,
-                dry_run=dry_run
+                dry_run=dry_run,
+                plex_token=plex_token
             )
             results["plex"] = plex_result
             
@@ -220,11 +223,21 @@ class CascadeDeletionService:
         self,
         media_item: Dict[str, Any],
         user_id: str,
-        dry_run: bool
+        dry_run: bool,
+        plex_token: Optional[str] = None
     ) -> Dict[str, Any]:
         """Delete item from Plex library."""
         try:
             logger.info(f"{'[DRY RUN] ' if dry_run else ''}Deleting from Plex: {media_item['title']}")
+            
+            # Check if plex_token is provided
+            if not plex_token:
+                logger.warning("Plex token not available - skipping Plex deletion")
+                return {
+                    "success": True, 
+                    "message": "Plex token not available - deletion from *arr services will proceed, manual Plex cleanup required",
+                    "skipped": True
+                }
             
             # Get server details
             server_result = self.supabase.table("servers").select("*").eq("id", media_item['server_id']).single().execute()
@@ -232,19 +245,6 @@ class CascadeDeletionService:
                 return {"success": False, "error": "Server not found"}
             
             server_data = server_result.data
-            
-            # TODO: Plex token is not stored in database - it's in frontend localStorage
-            # For admin-initiated deletions, we need a different approach:
-            # 1. Store admin's token in integrations table, OR
-            # 2. Pass token as parameter from frontend, OR
-            # 3. Use Plex server admin credentials
-            # For now, skip Plex deletion (will still delete from Sonarr/Radarr/Overseerr)
-            logger.warning("Plex token not available - skipping Plex deletion (will delete from *arr services only)")
-            return {
-                "success": True, 
-                "message": "Plex token not available - deletion from *arr services will proceed, manual Plex cleanup required",
-                "skipped": True
-            }
             
             if dry_run:
                 return {
