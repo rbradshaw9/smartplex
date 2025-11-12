@@ -291,10 +291,51 @@ class CascadeDeletionService:
                 item = server.fetchItem(int(media_item['plex_id']))
                 logger.info(f"  ✅ Found Plex item: {item.title}")
                 
-                # Delete it
-                logger.info(f"  🗑️  CALLING item.delete() for '{item.title}'...")
+                # Get the file path(s) before deletion
+                file_paths = []
+                try:
+                    for media in item.media:
+                        for part in media.parts:
+                            file_paths.append(part.file)
+                    logger.info(f"  📁 File paths to delete: {file_paths}")
+                except Exception as fp_error:
+                    logger.warning(f"  ⚠️  Could not get file paths: {fp_error}")
+                
+                # Delete from Plex library (removes from database, not disk)
+                logger.info(f"  🗑️  CALLING item.delete() to remove from Plex library...")
                 item.delete()
-                logger.info(f"  ✅ Plex API delete() completed successfully")
+                logger.info(f"  ✅ Removed from Plex library successfully")
+                
+                # Actually delete the files from disk
+                import os
+                deleted_files = []
+                failed_files = []
+                for file_path in file_paths:
+                    try:
+                        if os.path.exists(file_path):
+                            logger.info(f"  🗑️  Deleting file: {file_path}")
+                            os.remove(file_path)
+                            deleted_files.append(file_path)
+                            logger.info(f"  ✅ Deleted file from disk")
+                            
+                            # Also try to remove empty parent directories
+                            parent_dir = os.path.dirname(file_path)
+                            try:
+                                if os.path.exists(parent_dir) and not os.listdir(parent_dir):
+                                    logger.info(f"  🗑️  Removing empty directory: {parent_dir}")
+                                    os.rmdir(parent_dir)
+                            except Exception as dir_err:
+                                logger.warning(f"  ⚠️  Could not remove directory: {dir_err}")
+                        else:
+                            logger.warning(f"  ⚠️  File not found (may already be deleted): {file_path}")
+                    except Exception as file_err:
+                        logger.error(f"  ❌ Failed to delete file {file_path}: {file_err}")
+                        failed_files.append(file_path)
+                
+                if deleted_files:
+                    logger.info(f"  ✅ Deleted {len(deleted_files)} file(s) from disk")
+                if failed_files:
+                    logger.warning(f"  ⚠️  Failed to delete {len(failed_files)} file(s)")
                 
                 # Also delete from our database to prevent re-scanning
                 try:
