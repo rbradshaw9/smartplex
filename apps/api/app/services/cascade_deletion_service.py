@@ -345,17 +345,18 @@ class CascadeDeletionService:
                 return {"success": True, "message": "No server admin", "skipped": True}
             
             # Get admin's Sonarr integration
+            # Try exact server match first, then fall back to NULL server_id (global integration)
             integration_result = self.supabase.table("integrations")\
                 .select("*")\
                 .eq("user_id", admin_id)\
-                .eq("server_id", server_id)\
                 .eq("service", "sonarr")\
                 .eq("status", "active")\
+                .or_(f"server_id.eq.{server_id},server_id.is.null")\
                 .limit(1)\
                 .execute()
             
             if not integration_result.data or len(integration_result.data) == 0:
-                logger.info(f"No active Sonarr integration found for server {server_id}")
+                logger.info(f"No active Sonarr integration found for user {admin_id}")
                 return {"success": True, "message": "No Sonarr integration", "skipped": True}
             
             integration = integration_result.data[0]
