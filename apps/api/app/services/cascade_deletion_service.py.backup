@@ -289,33 +289,26 @@ class CascadeDeletionService:
             try:
                 # Fetch the item by rating key (plex_id)
                 item = server.fetchItem(int(media_item['plex_id']))
-                logger.info(f"  Found Plex item: {item.title}")
+                logger.info(f"  ✅ Found Plex item: {item.title}")
                 
-                # Get the library section
+                # Get the library section for proper file deletion
                 section = item.section()
-                section_key = section.key.split('/')[-1]
-                logger.info(f"  Library section: {section.title} (ID: {section_key})")
+                logger.info(f"  � Library section: {section.title}")
                 
-                # Use direct Plex HTTP API to delete item AND files
-                logger.info(f"  Deleting '{item.title}' AND files via Plex API...")
+                # Delete the item from Plex library
+                logger.info(f"  🗑️  Deleting '{item.title}' from Plex library...")
+                item.delete()
+                logger.info(f"  ✅ Item removed from Plex library")
+                
+                # Empty trash to actually delete files from disk
+                # This is critical - item.delete() only removes from library, emptyTrash() deletes files
+                logger.info(f"  🗑️  Emptying library trash to delete files from disk...")
                 try:
-                    import httpx
-                    plex_url = server._baseurl
-                    delete_endpoint = f"{plex_url}/library/sections/{section_key}/all"
-                    headers = {'X-Plex-Token': plex_token}
-                    params = {'type': 1, 'id': media_item['plex_id']}
-                    
-                    logger.info(f"  API: DELETE {delete_endpoint}?type=1&id={media_item['plex_id']}")
-                    async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
-                        response = await client.delete(delete_endpoint, headers=headers, params=params)
-                        response.raise_for_status()
-                    
-                    logger.info(f"  SUCCESS: Plex API status {response.status_code} - files deleted")
-                    
-                except Exception as api_error:
-                    logger.error(f"  API deletion failed: {api_error}, using fallback")
-                    item.delete()
-                    logger.info(f"  Fallback: removed from library only")
+                    section.emptyTrash()
+                    logger.info(f"  ✅ Library trash emptied - files deleted from disk")
+                except Exception as trash_error:
+                    logger.warning(f"  ⚠️  Could not empty trash: {trash_error}")
+                    logger.info(f"  💡 Note: You may need to enable 'Empty trash automatically after every scan' in Plex Library settings")
                 
                 # Also delete from our database to prevent re-scanning
                 try:
