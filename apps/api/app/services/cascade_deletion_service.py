@@ -451,6 +451,8 @@ class CascadeDeletionService:
                 logger.warning(f"No admin found for server {server_id}")
                 return {"success": True, "message": "No server admin", "skipped": True}
             
+            logger.info(f"Looking for Radarr integration: user_id={admin_id}, server_id={server_id}")
+            
             # Get admin's Radarr integration
             integration_result = self.supabase.table("integrations")\
                 .select("*")\
@@ -461,8 +463,18 @@ class CascadeDeletionService:
                 .limit(1)\
                 .execute()
             
+            logger.info(f"Radarr integration query result: {len(integration_result.data) if integration_result.data else 0} found")
+            if integration_result.data:
+                logger.info(f"Integration details: service={integration_result.data[0].get('service')}, status={integration_result.data[0].get('status')}")
+            
             if not integration_result.data or len(integration_result.data) == 0:
-                logger.info(f"No active Radarr integration found for server {server_id}")
+                logger.warning(f"No active Radarr integration found for user {admin_id}, server {server_id}")
+                # Also check what integrations DO exist for debugging
+                all_integrations = self.supabase.table("integrations")\
+                    .select("id,service,status,user_id,server_id")\
+                    .eq("service", "radarr")\
+                    .execute()
+                logger.info(f"All Radarr integrations in system: {all_integrations.data}")
                 return {"success": True, "message": "No Radarr integration", "skipped": True}
             
             integration = integration_result.data[0]
@@ -540,6 +552,8 @@ class CascadeDeletionService:
                 logger.warning(f"No admin found for server {server_id}")
                 return {"success": True, "message": "No server admin", "skipped": True}
             
+            logger.info(f"Looking for Overseerr integration: user_id={admin_id}, server_id={server_id}")
+            
             # Get admin's Overseerr integration
             integration_result = self.supabase.table("integrations")\
                 .select("*")\
@@ -550,8 +564,16 @@ class CascadeDeletionService:
                 .limit(1)\
                 .execute()
             
+            logger.info(f"Overseerr integration query result: {len(integration_result.data) if integration_result.data else 0} found")
+            
             if not integration_result.data or len(integration_result.data) == 0:
-                logger.info(f"No active Overseerr integration found for server {server_id}")
+                logger.warning(f"No active Overseerr integration found for user {admin_id}, server {server_id}")
+                # Also check what integrations DO exist for debugging
+                all_integrations = self.supabase.table("integrations")\
+                    .select("id,service,status,user_id,server_id")\
+                    .eq("service", "overseerr")\
+                    .execute()
+                logger.info(f"All Overseerr integrations in system: {all_integrations.data}")
                 return {"success": True, "message": "No Overseerr integration", "skipped": True}
             
             integration = integration_result.data[0]
