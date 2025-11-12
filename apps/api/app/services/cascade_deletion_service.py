@@ -197,6 +197,8 @@ class CascadeDeletionService:
             }).eq("id", event_id).execute()
             
             # Log to admin activity log
+            # Map status: 'completed' -> 'success' for admin_activity_log constraint
+            activity_status = "success" if results["overall_status"] == "completed" else results["overall_status"]
             self.supabase.table("admin_activity_log").insert({
                 "user_id": user_id,
                 "action_type": "deletion",
@@ -205,7 +207,7 @@ class CascadeDeletionService:
                 "resource_id": media_item['id'],
                 "resource_name": media_item['title'],
                 "details": results,
-                "status": results["overall_status"],
+                "status": activity_status,
                 "items_affected": 1,
                 "duration_ms": duration_ms
             }).execute()
