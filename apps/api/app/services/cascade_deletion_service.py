@@ -287,8 +287,18 @@ class CascadeDeletionService:
             # Find and delete the item
             logger.info(f"  🔍 Fetching Plex item with rating key: {media_item['plex_id']}")
             try:
+                # Validate plex_id is numeric
+                try:
+                    plex_rating_key = int(media_item['plex_id'])
+                except (ValueError, TypeError) as e:
+                    raise ValueError(
+                        f"Invalid plex_id '{media_item['plex_id']}' for item '{media_item.get('title', 'Unknown')}'. "
+                        f"Expected numeric rating key, got: {type(media_item['plex_id']).__name__}. "
+                        f"This item may need to be re-synced from Plex."
+                    )
+                
                 # Fetch the item by rating key (plex_id)
-                item = server.fetchItem(int(media_item['plex_id']))
+                item = server.fetchItem(plex_rating_key)
                 logger.info(f"  Found Plex item: {item.title}")
                 
                 # Delete the item from Plex
@@ -315,6 +325,14 @@ class CascadeDeletionService:
                     "message": f"Deleted from Plex library and database"
                 }
                 
+            except ValueError as val_error:
+                # Invalid plex_id (e.g., 'Mr. Deeds_2002' instead of numeric rating key)
+                logger.error(f"❌ Invalid data in database: {val_error}")
+                return {
+                    "success": False,
+                    "error": f"Invalid plex_id: {str(val_error)}",
+                    "invalid_data": True  # Flag for cleanup
+                }
             except Exception as item_error:
                 logger.error(f"Failed to delete Plex item: {item_error}")
                 return {"success": False, "error": f"Plex API error: {str(item_error)}"}
