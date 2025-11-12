@@ -5,11 +5,13 @@ Requires admin role for all endpoints.
 """
 
 import asyncio
+import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from supabase import Client
 
@@ -21,6 +23,10 @@ from app.services.plex_collections import PlexCollectionManager
 
 router = APIRouter()
 logger = get_logger("admin.deletion")
+
+# In-memory progress tracking for deletion operations
+# Format: {user_id: {current, total, deleted, failed, currentItem, status, message}}
+deletion_progress: Dict[str, Dict[str, Any]] = {}
 
 
 # Request/Response Models
@@ -84,6 +90,34 @@ class ExecuteDeletionRequest(BaseModel):
     candidate_ids: Optional[List[str]] = None  # If None, deletes all candidates from last scan
     dry_run: bool = False
     plex_token: Optional[str] = None  # Plex token for deletion operations
+
+
+@router.get("/progress")
+async def get_deletion_progress(
+    admin_user: Dict[str, Any] = Depends(require_admin)
+):
+    """
+    Get current deletion progress for the admin user.
+    
+    Returns progress information including:
+    - current: Number of items processed
+    - total: Total items to process
+    - deleted: Number successfully deleted
+    - failed: Number that failed
+    - currentItem: Title of item currently being processed
+    - status: 'processing', 'completed', or 'error'
+    - message: Status message
+    """
+    user_id = admin_user["id"]
+    progress = deletion_progress.get(user_id, {
+        "current": 0,
+        "total": 0,
+        "deleted": 0,
+        "failed": 0,
+        "status": "idle",
+        "message": "No deletion in progress"
+    })
+    return progress
 
 
 @router.get("/rules", response_model=List[DeletionRuleResponse])
@@ -427,6 +461,17 @@ async def execute_deletion(
         # Handle large batches by processing sequentially with proper error handling
         logger.info(f"Processing {len(candidates)} candidates for deletion...")
         
+        # Initialize progress tracking
+        user_id = admin_user["id"]
+        deletion_progress[user_id] = {
+            "current": 0,
+            "total": len(candidates),
+            "deleted": 0,
+            "failed": 0,
+            "status": "processing",
+            "message": f"Starting deletion of {len(candidates)} items..."
+        }
+        
         # Execute CASCADE deletion on each candidate
         deletion_results = []
         deleted_count = 0
@@ -435,6 +480,15 @@ async def execute_deletion(
         
         for idx, candidate in enumerate(candidates):
             try:
+                # Update progress
+                deletion_progress[user_id].update({
+                    "current": idx + 1,
+                    "currentItem": candidate.get('title', 'Unknown'),
+                    "deleted": deleted_count,
+                    "failed": failed_count,
+                    "message": f"Processing {candidate.get('title', 'Unknown')}..."
+                })
+                
                 # Log progress every 5 items
                 if idx % 5 == 0 and idx > 0:
                     logger.info(f"Progress: {idx}/{len(candidates)} processed ({deleted_count} deleted, {failed_count} failed)")
@@ -494,6 +548,16 @@ async def execute_deletion(
         
         # Final progress log
         logger.info(f"✅ Deletion complete: {len(candidates)} total, {deleted_count} deleted, {failed_count} failed")
+        
+        # Mark progress as completed
+        deletion_progress[user_id].update({
+            "current": len(candidates),
+            "deleted": deleted_count,
+            "failed": failed_count,
+            "status": "completed",
+            "message": f"✅ Completed: {deleted_count} deleted, {failed_count} failed",
+            "currentItem": None
+        })
         
         # Log audit trail
         try:

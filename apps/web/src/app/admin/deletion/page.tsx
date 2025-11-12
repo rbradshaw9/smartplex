@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import type { Database } from '@smartplex/db'
+import DeletionProgressModal from '@/components/DeletionProgressModal'
 
 interface DeletionRule {
   id: string
@@ -71,6 +72,19 @@ export default function DeletionManagementPage() {
   const [editingRule, setEditingRule] = useState<DeletionRule | null>(null)
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
+  
+  // Progress modal state
+  const [showProgressModal, setShowProgressModal] = useState(false)
+  const [deletionProgress, setDeletionProgress] = useState({
+    current: 0,
+    total: 0,
+    deleted: 0,
+    failed: 0,
+    currentItem: '',
+    status: 'processing' as 'processing' | 'completed' | 'error',
+    message: ''
+  })
+  const progressPollInterval = useRef<NodeJS.Timeout | null>(null)
   
   // Selection and filtering state
   const [selectedCandidates, setSelectedCandidates] = useState<Set<string>>(new Set())
