@@ -193,8 +193,7 @@ class CascadeDeletionService:
         if event_id:
             duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
             self.supabase.table("deletion_events").update({
-                "status": results["overall_status"],
-                "completed_at": datetime.now(timezone.utc).isoformat()
+                "status": results["overall_status"]
             }).eq("id", event_id).execute()
             
             # Log to admin activity log

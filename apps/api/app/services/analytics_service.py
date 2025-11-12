@@ -324,11 +324,14 @@ class AnalyticsService:
                 .eq("user_id", admin_id)\
                 .eq("server_id", server_id)\
                 .eq("service", "tautulli")\
-                .eq("enabled", True)\
-                .maybe_single()\
+                .eq("status", "active")\
+                .limit(1)\
                 .execute()
             
-            return integration_result.data
+            if not integration_result.data or len(integration_result.data) == 0:
+                return None
+            
+            return integration_result.data[0]
         
         except Exception as e:
             logger.error(f"Failed to get Tautulli integration: {e}")
