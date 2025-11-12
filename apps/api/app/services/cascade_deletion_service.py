@@ -291,51 +291,24 @@ class CascadeDeletionService:
                 item = server.fetchItem(int(media_item['plex_id']))
                 logger.info(f"  ✅ Found Plex item: {item.title}")
                 
-                # Get the file path(s) before deletion
-                file_paths = []
-                try:
-                    for media in item.media:
-                        for part in media.parts:
-                            file_paths.append(part.file)
-                    logger.info(f"  📁 File paths to delete: {file_paths}")
-                except Exception as fp_error:
-                    logger.warning(f"  ⚠️  Could not get file paths: {fp_error}")
+                # Get the library section for proper file deletion
+                section = item.section()
+                logger.info(f"  � Library section: {section.title}")
                 
-                # Delete from Plex library (removes from database, not disk)
-                logger.info(f"  🗑️  CALLING item.delete() to remove from Plex library...")
+                # Delete the item from Plex library
+                logger.info(f"  🗑️  Deleting '{item.title}' from Plex library...")
                 item.delete()
-                logger.info(f"  ✅ Removed from Plex library successfully")
+                logger.info(f"  ✅ Item removed from Plex library")
                 
-                # Actually delete the files from disk
-                import os
-                deleted_files = []
-                failed_files = []
-                for file_path in file_paths:
-                    try:
-                        if os.path.exists(file_path):
-                            logger.info(f"  🗑️  Deleting file: {file_path}")
-                            os.remove(file_path)
-                            deleted_files.append(file_path)
-                            logger.info(f"  ✅ Deleted file from disk")
-                            
-                            # Also try to remove empty parent directories
-                            parent_dir = os.path.dirname(file_path)
-                            try:
-                                if os.path.exists(parent_dir) and not os.listdir(parent_dir):
-                                    logger.info(f"  🗑️  Removing empty directory: {parent_dir}")
-                                    os.rmdir(parent_dir)
-                            except Exception as dir_err:
-                                logger.warning(f"  ⚠️  Could not remove directory: {dir_err}")
-                        else:
-                            logger.warning(f"  ⚠️  File not found (may already be deleted): {file_path}")
-                    except Exception as file_err:
-                        logger.error(f"  ❌ Failed to delete file {file_path}: {file_err}")
-                        failed_files.append(file_path)
-                
-                if deleted_files:
-                    logger.info(f"  ✅ Deleted {len(deleted_files)} file(s) from disk")
-                if failed_files:
-                    logger.warning(f"  ⚠️  Failed to delete {len(failed_files)} file(s)")
+                # Empty trash to actually delete files from disk
+                # This is critical - item.delete() only removes from library, emptyTrash() deletes files
+                logger.info(f"  🗑️  Emptying library trash to delete files from disk...")
+                try:
+                    section.emptyTrash()
+                    logger.info(f"  ✅ Library trash emptied - files deleted from disk")
+                except Exception as trash_error:
+                    logger.warning(f"  ⚠️  Could not empty trash: {trash_error}")
+                    logger.info(f"  💡 Note: You may need to enable 'Empty trash automatically after every scan' in Plex Library settings")
                 
                 # Also delete from our database to prevent re-scanning
                 try:
