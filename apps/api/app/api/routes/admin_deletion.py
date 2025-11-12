@@ -4,11 +4,12 @@ Admin API routes for deletion management.
 Requires admin role for all endpoints.
 """
 
+import asyncio
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from supabase import Client
 
@@ -422,12 +423,9 @@ async def execute_deletion(
                 }
             }
         
-        # BATCH SIZE LIMIT: Process max 10 at a time to avoid timeouts
-        MAX_BATCH_SIZE = 10
-        if len(candidates) > MAX_BATCH_SIZE:
-            logger.warning(f"⚠️  Batch size limited: {len(candidates)} candidates requested, processing first {MAX_BATCH_SIZE}")
-            logger.warning(f"    To delete all {len(candidates)}, run deletion multiple times or delete in smaller batches")
-            candidates = candidates[:MAX_BATCH_SIZE]
+        # Process ALL candidates - no batch limit
+        # Handle large batches by processing sequentially with proper error handling
+        logger.info(f"Processing {len(candidates)} candidates for deletion...")
         
         # Execute CASCADE deletion on each candidate
         deletion_results = []
@@ -435,8 +433,12 @@ async def execute_deletion(
         failed_count = 0
         total_size_mb = 0.0
         
-        for candidate in candidates:
+        for idx, candidate in enumerate(candidates):
             try:
+                # Log progress every 5 items
+                if idx % 5 == 0 and idx > 0:
+                    logger.info(f"Progress: {idx}/{len(candidates)} processed ({deleted_count} deleted, {failed_count} failed)")
+                
                 # Get full media item data from database
                 media_result = supabase.table("media_items")\
                     .select("*")\
@@ -476,6 +478,9 @@ async def execute_deletion(
                     total_size_mb += media_item.get('file_size_mb', 0) or 0
                 else:
                     failed_count += 1
+                
+                # Small delay to prevent API rate limiting (0.1s per item)
+                await asyncio.sleep(0.1)
                     
             except Exception as deletion_error:
                 logger.error(f"Error deleting candidate {candidate.get('id', 'unknown')}: {deletion_error}", exc_info=True)
@@ -486,6 +491,9 @@ async def execute_deletion(
                     "error": str(deletion_error),
                     "overall_status": "failed"
                 })
+        
+        # Final progress log
+        logger.info(f"✅ Deletion complete: {len(candidates)} total, {deleted_count} deleted, {failed_count} failed")
         
         # Log audit trail
         try:
@@ -509,7 +517,7 @@ async def execute_deletion(
         logger.warning(f"{action} using rule {request.rule_id}: deleted={deleted_count}, failed={failed_count}")
         
         # Return simplified results
-        response = {
+        return {
             "rule_id": request.rule_id,
             "dry_run": request.dry_run,
             "results": {
@@ -521,14 +529,6 @@ async def execute_deletion(
             },
             "cascade_details": deletion_results  # Include full cascade results for debugging
         }
-        
-        # Add batch limit warning if applicable
-        if len(request.candidate_ids or []) > MAX_BATCH_SIZE or len(candidates) == MAX_BATCH_SIZE:
-            response["batch_limit_applied"] = True
-            response["batch_size"] = MAX_BATCH_SIZE
-            response["message"] = f"Processed {MAX_BATCH_SIZE} items. To delete more, run deletion again."
-        
-        return response
     except ValueError as e:
         logger.error(f"ValueError in execute_deletion: {e}")
         raise HTTPException(
