@@ -11,7 +11,6 @@ interface DeletionRule {
   name: string
   description: string | null
   enabled: boolean
-  dry_run_mode: boolean
   grace_period_days: number
   inactivity_threshold_days: number
   excluded_libraries: string[]
@@ -99,7 +98,6 @@ export default function DeletionManagementPage() {
     name: '',
     description: '',
     enabled: false,
-    dry_run_mode: true,
     grace_period_days: 30,
     inactivity_threshold_days: 15,
     excluded_genres: '',
@@ -230,7 +228,6 @@ export default function DeletionManagementPage() {
           name: '',
           description: '',
           enabled: false,
-          dry_run_mode: true,
           grace_period_days: 30,
           inactivity_threshold_days: 15,
           excluded_genres: '',
@@ -264,7 +261,7 @@ export default function DeletionManagementPage() {
             'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ rule_id: ruleId, dry_run: true })
+          body: JSON.stringify({ rule_id: ruleId })
         }
       )
 
@@ -280,83 +277,6 @@ export default function DeletionManagementPage() {
       console.error(err)
     } finally {
       setScanning(false)
-    }
-  }
-
-  async function executeDeletion(ruleId: string, dryRun: boolean = false) {
-    if (!dryRun) {
-      if (!scanResults || scanResults.candidates.length === 0) {
-        return
-      }
-      
-      const totalSize = scanResults.candidates.reduce((sum, c) => sum + (c.file_size_mb || 0), 0) / 1024
-      
-      const confirmMessage = `🚨 PERMANENT DELETION WARNING 🚨
-
-This action is IRREVERSIBLE and will:
-• Delete ${scanResults.candidates.length} file(s) from Plex library
-• Remove ${totalSize.toFixed(2)} GB of content permanently
-• Remove from Sonarr/Radarr (prevent re-download)
-• Clear Overseerr requests
-
-Files will be DELETED from your server storage.
-This CANNOT be undone.
-
-Type "DELETE" below to confirm:`
-      
-      const userInput = prompt(confirmMessage)
-      if (userInput !== 'DELETE') {
-        alert('Deletion cancelled. (You must type DELETE in all caps to confirm)')
-        return
-      }
-    }
-
-    setExecuting(true)
-    setError('')
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/admin/deletion/execute`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ rule_id: ruleId, dry_run: dryRun })
-        }
-      )
-
-      if (response.ok) {
-        const results = await response.json()
-        const { deleted, failed, total_size_mb } = results.results
-        
-        if (dryRun) {
-          alert(`✅ Dry Run Complete!\n\n` +
-                `Would delete: ${deleted} items\n` +
-                `Failed: ${failed} items\n` +
-                `Space to free: ${total_size_mb.toFixed(0)} MB`)
-        } else {
-          alert(`✅ Deletion Complete!\n\n` +
-                `Deleted: ${deleted} items\n` +
-                `Failed: ${failed} items\n` +
-                `Space freed: ${total_size_mb.toFixed(0)} MB`)
-        }
-        
-        setScanResults(null)
-        loadRules()
-      } else {
-        const error = await response.json()
-        setError(error.detail || 'Failed to execute deletion')
-      }
-    } catch (err) {
-      setError('Failed to execute deletion')
-      console.error(err)
-    } finally {
-      setExecuting(false)
     }
   }
 
@@ -660,7 +580,6 @@ Type "DELETE" below to confirm:`
       name: rule.name,
       description: rule.description || '',
       enabled: rule.enabled,
-      dry_run_mode: rule.dry_run_mode,
       grace_period_days: rule.grace_period_days,
       inactivity_threshold_days: rule.inactivity_threshold_days,
       excluded_genres: rule.excluded_genres.join(', '),
@@ -839,19 +758,18 @@ Type "DELETE" below to confirm:`
     }
   }
 
-  const deleteSelected = async (dryRun: boolean = false) => {
+  const deleteSelected = async () => {
     if (selectedCandidates.size === 0) {
       alert('Please select at least one item to delete')
       return
     }
 
-    if (!dryRun) {
-      // Calculate total size of selected items
-      const selectedSize = getFilteredAndSortedCandidates()
-        .filter(c => selectedCandidates.has(c.id))
-        .reduce((sum, c) => sum + (c.file_size_mb || 0), 0) / 1024
-      
-      const confirmMessage = `🚨 PERMANENT DELETION WARNING 🚨
+    // Calculate total size of selected items
+    const selectedSize = getFilteredAndSortedCandidates()
+      .filter(c => selectedCandidates.has(c.id))
+      .reduce((sum, c) => sum + (c.file_size_mb || 0), 0) / 1024
+    
+    const confirmMessage = `🚨 PERMANENT DELETION WARNING 🚨
 
 This action is IRREVERSIBLE and will:
 • Delete ${selectedCandidates.size} file(s) from Plex library
@@ -863,12 +781,11 @@ Files will be DELETED from your server storage.
 This CANNOT be undone.
 
 Type "DELETE" below to confirm:`
-      
-      const userInput = prompt(confirmMessage)
-      if (userInput !== 'DELETE') {
-        alert('Deletion cancelled. (You must type DELETE in all caps to confirm)')
-        return
-      }
+    
+    const userInput = prompt(confirmMessage)
+    if (userInput !== 'DELETE') {
+      alert('Deletion cancelled. (You must type DELETE in all caps to confirm)')
+      return
     }
 
     setExecuting(true)
@@ -913,8 +830,7 @@ Type "DELETE" below to confirm:`
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({ 
-            rule_id: scanResults.rule_id, 
-            dry_run: dryRun,
+            rule_id: scanResults.rule_id,
             candidate_ids: Array.from(selectedCandidates),
             plex_token: plexToken
           })
@@ -1271,16 +1187,6 @@ Type "DELETE" below to confirm:`
                     />
                     <span className="text-sm">Enable this rule</span>
                   </label>
-
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={formData.dry_run_mode}
-                      onChange={(e) => setFormData({ ...formData, dry_run_mode: e.target.checked })}
-                      className="w-4 h-4"
-                    />
-                    <span className="text-sm">Dry run mode (safe, no actual deletions)</span>
-                  </label>
                 </div>
 
                 <div className="flex gap-3 pt-4">
@@ -1329,9 +1235,6 @@ Type "DELETE" below to confirm:`
                       <h3 className="text-xl font-semibold">{rule.name}</h3>
                       {rule.enabled && (
                         <span className="bg-green-600 text-xs px-2 py-1 rounded">ENABLED</span>
-                      )}
-                      {rule.dry_run_mode && (
-                        <span className="bg-yellow-600 text-xs px-2 py-1 rounded">DRY RUN</span>
                       )}
                     </div>
                     {rule.description && (
@@ -1402,14 +1305,7 @@ Type "DELETE" below to confirm:`
               </div>
               <div className="flex gap-3">
                 <button
-                  onClick={() => deleteSelected(true)}
-                  disabled={executing || selectedCandidates.size === 0}
-                  className="bg-yellow-600 hover:bg-yellow-700 disabled:bg-yellow-800 disabled:cursor-not-allowed px-6 py-2 rounded font-semibold transition-colors"
-                >
-                  {executing ? 'Processing...' : `Dry Run (${selectedCandidates.size})`}
-                </button>
-                <button
-                  onClick={() => deleteSelected(false)}
+                  onClick={() => deleteSelected()}
                   disabled={executing || selectedCandidates.size === 0}
                   className="bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:cursor-not-allowed px-6 py-2 rounded font-semibold transition-colors"
                 >
@@ -1695,7 +1591,6 @@ Type "DELETE" below to confirm:`
       <DeletionProgressModal
         isOpen={showProgressModal}
         onClose={() => setShowProgressModal(false)}
-        isDryRun={false}
         progress={deletionProgress}
       />
     </div>

@@ -15,22 +15,14 @@ interface DeletionProgress {
 interface DeletionProgressModalProps {
   isOpen: boolean
   onClose: () => void
-  isDryRun: boolean
+  progress: DeletionProgress
 }
 
 export default function DeletionProgressModal({ 
   isOpen, 
   onClose,
-  isDryRun
+  progress
 }: DeletionProgressModalProps) {
-  const [progress, setProgress] = useState<DeletionProgress>({
-    current: 0,
-    total: 0,
-    deleted: 0,
-    failed: 0,
-    status: 'processing'
-  })
-
   const percentComplete = progress.total > 0 
     ? Math.round((progress.current / progress.total) * 100) 
     : 0
@@ -43,7 +35,7 @@ export default function DeletionProgressModal({
         {/* Header */}
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-white mb-2">
-            {isDryRun ? 'Dry Run In Progress' : 'Deletion In Progress'}
+            Deletion In Progress
           </h2>
           <p className="text-slate-400">
             {progress.status === 'processing' && 'Please wait while we process your request...'}
@@ -81,9 +73,7 @@ export default function DeletionProgressModal({
         {/* Stats Grid */}
         <div className="grid grid-cols-2 gap-4 mb-6">
           <div className="bg-slate-700 rounded-lg p-4">
-            <div className="text-sm text-slate-400 mb-1">
-              {isDryRun ? 'Would Delete' : 'Deleted'}
-            </div>
+            <div className="text-sm text-slate-400 mb-1">Deleted</div>
             <div className="text-2xl font-bold text-green-400">{progress.deleted}</div>
           </div>
           <div className="bg-slate-700 rounded-lg p-4">

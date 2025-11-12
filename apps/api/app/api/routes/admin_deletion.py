@@ -35,7 +35,6 @@ class DeletionRuleCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = None
     enabled: bool = False
-    dry_run_mode: bool = True
     grace_period_days: int = Field(30, ge=0)
     inactivity_threshold_days: int = Field(15, ge=0)
     excluded_libraries: List[str] = Field(default_factory=list)
@@ -49,7 +48,6 @@ class DeletionRuleUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     description: Optional[str] = None
     enabled: Optional[bool] = None
-    dry_run_mode: Optional[bool] = None
     grace_period_days: Optional[int] = Field(None, ge=0)
     inactivity_threshold_days: Optional[int] = Field(None, ge=0)
     excluded_libraries: Optional[List[str]] = None
@@ -64,7 +62,6 @@ class DeletionRuleResponse(BaseModel):
     name: str
     description: Optional[str]
     enabled: bool
-    dry_run_mode: bool
     grace_period_days: int
     inactivity_threshold_days: int
     excluded_libraries: List[str]
@@ -80,7 +77,6 @@ class DeletionRuleResponse(BaseModel):
 class ScanRequest(BaseModel):
     """Request to scan for deletion candidates."""
     rule_id: str
-    dry_run: bool = True
     update_plex_collection: bool = True  # Auto-update "Leaving Soon" collection
 
 
@@ -88,7 +84,6 @@ class ExecuteDeletionRequest(BaseModel):
     """Request to execute deletion."""
     rule_id: str
     candidate_ids: Optional[List[str]] = None  # If None, deletes all candidates from last scan
-    dry_run: bool = False
     plex_token: Optional[str] = None  # Plex token for deletion operations
 
 
@@ -316,7 +311,7 @@ async def scan_for_candidates(
     """
     Scan for deletion candidates using a rule.
     
-    This is always a dry-run that returns what would be deleted.
+    Returns what would be deleted.
     Requires admin role.
     """
     try:
@@ -333,8 +328,7 @@ async def scan_for_candidates(
             "resource_type": "deletion_rule",
             "resource_id": request.rule_id,
             "changes": {
-                "candidates_found": len(candidates),
-                "dry_run": True
+                "candidates_found": len(candidates)
             }
         }).execute()
         
@@ -408,7 +402,7 @@ async def execute_deletion(
         deletion_service = DeletionService(supabase)
         cascade_service = CascadeDeletionService(supabase)
         
-        logger.info(f"🔍 Execute deletion request: rule_id={request.rule_id}, dry_run={request.dry_run}, candidate_ids={request.candidate_ids}")
+        logger.info(f"🔍 Execute deletion request: rule_id={request.rule_id}, candidate_ids={request.candidate_ids}")
         
         # CRITICAL FIX: If specific candidate_ids provided, ONLY delete those
         # Do NOT re-scan rule as library may have changed since user's scan
@@ -518,7 +512,7 @@ async def execute_deletion(
                     user_id=admin_user["id"],
                     deletion_rule_id=str(request.rule_id),
                     deletion_reason=f"rule_{request.rule_id}",
-                    dry_run=request.dry_run,
+                    dry_run=False,
                     plex_token=request.plex_token
                 )
                 
@@ -563,27 +557,24 @@ async def execute_deletion(
         try:
             supabase.table("audit_log").insert({
                 "user_id": admin_user["id"],
-                "action": "execute_deletion" if not request.dry_run else "execute_deletion_dry_run",
+                "action": "execute_deletion",
                 "resource_type": "deletion_rule",
                 "resource_id": request.rule_id,
                 "changes": {
                     "total_candidates": len(candidates),
                     "deleted": deleted_count,
                     "failed": failed_count,
-                    "dry_run": request.dry_run,
                     "cascade_results": deletion_results
                 }
             }).execute()
         except Exception as audit_error:
             logger.error(f"Failed to log audit trail (non-fatal): {audit_error}")
         
-        action = "DRY RUN" if request.dry_run else "EXECUTED CASCADE DELETION"
-        logger.warning(f"{action} using rule {request.rule_id}: deleted={deleted_count}, failed={failed_count}")
+        logger.warning(f"EXECUTED CASCADE DELETION using rule {request.rule_id}: deleted={deleted_count}, failed={failed_count}")
         
         # Return simplified results
         return {
             "rule_id": request.rule_id,
-            "dry_run": request.dry_run,
             "results": {
                 "total_candidates": len(candidates),
                 "deleted": deleted_count,
