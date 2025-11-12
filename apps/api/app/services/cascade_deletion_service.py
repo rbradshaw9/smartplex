@@ -328,13 +328,15 @@ class CascadeDeletionService:
                 .eq("user_id", admin_id)\
                 .eq("server_id", server_id)\
                 .eq("service", "sonarr")\
-                .eq("enabled", True)\
-                .maybe_single()\
+                .eq("status", "active")\
+                .limit(1)\
                 .execute()
             
-            if not integration_result.data:
+            if not integration_result.data or len(integration_result.data) == 0:
                 logger.info(f"No active Sonarr integration found for server {server_id}")
                 return {"success": True, "message": "No Sonarr integration", "skipped": True}
+            
+            integration = integration_result.data[0]
             
             integration = integration_result.data
             tvdb_id = media_item.get('tvdb_id')
@@ -417,13 +419,15 @@ class CascadeDeletionService:
                 .eq("user_id", admin_id)\
                 .eq("server_id", server_id)\
                 .eq("service", "radarr")\
-                .eq("enabled", True)\
-                .maybe_single()\
+                .eq("status", "active")\
+                .limit(1)\
                 .execute()
             
-            if not integration_result.data:
+            if not integration_result.data or len(integration_result.data) == 0:
                 logger.info(f"No active Radarr integration found for server {server_id}")
                 return {"success": True, "message": "No Radarr integration", "skipped": True}
+            
+            integration = integration_result.data[0]
             
             integration = integration_result.data
             tmdb_id = media_item.get('tmdb_id')
@@ -506,13 +510,15 @@ class CascadeDeletionService:
                 .eq("user_id", admin_id)\
                 .eq("server_id", server_id)\
                 .eq("service", "overseerr")\
-                .eq("enabled", True)\
-                .maybe_single()\
+                .eq("status", "active")\
+                .limit(1)\
                 .execute()
             
-            if not integration_result.data:
+            if not integration_result.data or len(integration_result.data) == 0:
                 logger.info(f"No active Overseerr integration found for server {server_id}")
                 return {"success": True, "message": "No Overseerr integration", "skipped": True}
+            
+            integration = integration_result.data[0]
             
             integration = integration_result.data
             tmdb_id = media_item.get('tmdb_id')
