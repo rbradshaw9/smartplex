@@ -293,7 +293,8 @@ class CascadeDeletionService:
                 
                 # Get the library section
                 section = item.section()
-                section_key = section.key.split('/')[-1]
+                # section.key might be an int or a string like '/library/sections/1'
+                section_key = str(section.key).split('/')[-1] if '/' in str(section.key) else str(section.key)
                 logger.info(f"  Library section: {section.title} (ID: {section_key})")
                 
                 # Use direct Plex HTTP API to delete item AND files
@@ -454,27 +455,22 @@ class CascadeDeletionService:
             logger.info(f"Looking for Radarr integration: user_id={admin_id}, server_id={server_id}")
             
             # Get admin's Radarr integration
+            # Try exact server match first, then fall back to NULL server_id (global integration)
             integration_result = self.supabase.table("integrations")\
                 .select("*")\
                 .eq("user_id", admin_id)\
-                .eq("server_id", server_id)\
                 .eq("service", "radarr")\
                 .eq("status", "active")\
+                .or_(f"server_id.eq.{server_id},server_id.is.null")\
                 .limit(1)\
                 .execute()
             
             logger.info(f"Radarr integration query result: {len(integration_result.data) if integration_result.data else 0} found")
             if integration_result.data:
-                logger.info(f"Integration details: service={integration_result.data[0].get('service')}, status={integration_result.data[0].get('status')}")
+                logger.info(f"Integration details: service={integration_result.data[0].get('service')}, status={integration_result.data[0].get('status')}, server_id={integration_result.data[0].get('server_id')}")
             
             if not integration_result.data or len(integration_result.data) == 0:
-                logger.warning(f"No active Radarr integration found for user {admin_id}, server {server_id}")
-                # Also check what integrations DO exist for debugging
-                all_integrations = self.supabase.table("integrations")\
-                    .select("id,service,status,user_id,server_id")\
-                    .eq("service", "radarr")\
-                    .execute()
-                logger.info(f"All Radarr integrations in system: {all_integrations.data}")
+                logger.warning(f"No active Radarr integration found for user {admin_id}")
                 return {"success": True, "message": "No Radarr integration", "skipped": True}
             
             integration = integration_result.data[0]
@@ -555,25 +551,20 @@ class CascadeDeletionService:
             logger.info(f"Looking for Overseerr integration: user_id={admin_id}, server_id={server_id}")
             
             # Get admin's Overseerr integration
+            # Try exact server match first, then fall back to NULL server_id (global integration)
             integration_result = self.supabase.table("integrations")\
                 .select("*")\
                 .eq("user_id", admin_id)\
-                .eq("server_id", server_id)\
                 .eq("service", "overseerr")\
                 .eq("status", "active")\
+                .or_(f"server_id.eq.{server_id},server_id.is.null")\
                 .limit(1)\
                 .execute()
             
             logger.info(f"Overseerr integration query result: {len(integration_result.data) if integration_result.data else 0} found")
             
             if not integration_result.data or len(integration_result.data) == 0:
-                logger.warning(f"No active Overseerr integration found for user {admin_id}, server {server_id}")
-                # Also check what integrations DO exist for debugging
-                all_integrations = self.supabase.table("integrations")\
-                    .select("id,service,status,user_id,server_id")\
-                    .eq("service", "overseerr")\
-                    .execute()
-                logger.info(f"All Overseerr integrations in system: {all_integrations.data}")
+                logger.warning(f"No active Overseerr integration found for user {admin_id}")
                 return {"success": True, "message": "No Overseerr integration", "skipped": True}
             
             integration = integration_result.data[0]
