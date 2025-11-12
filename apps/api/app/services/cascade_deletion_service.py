@@ -291,32 +291,13 @@ class CascadeDeletionService:
                 item = server.fetchItem(int(media_item['plex_id']))
                 logger.info(f"  Found Plex item: {item.title}")
                 
-                # Get the library section
-                section = item.section()
-                # section.key might be an int or a string like '/library/sections/1'
-                section_key = str(section.key).split('/')[-1] if '/' in str(section.key) else str(section.key)
-                logger.info(f"  Library section: {section.title} (ID: {section_key})")
-                
-                # Use direct Plex HTTP API to delete item AND files
-                logger.info(f"  Deleting '{item.title}' AND files via Plex API...")
-                try:
-                    import httpx
-                    plex_url = server._baseurl
-                    delete_endpoint = f"{plex_url}/library/sections/{section_key}/all"
-                    headers = {'X-Plex-Token': plex_token}
-                    params = {'type': 1, 'id': media_item['plex_id']}
-                    
-                    logger.info(f"  API: DELETE {delete_endpoint}?type=1&id={media_item['plex_id']}")
-                    async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
-                        response = await client.delete(delete_endpoint, headers=headers, params=params)
-                        response.raise_for_status()
-                    
-                    logger.info(f"  SUCCESS: Plex API status {response.status_code} - files deleted")
-                    
-                except Exception as api_error:
-                    logger.error(f"  API deletion failed: {api_error}, using fallback")
-                    item.delete()
-                    logger.info(f"  Fallback: removed from library only")
+                # Delete the item from Plex
+                # NOTE: Whether files are deleted depends on Plex server setting:
+                # Settings > Library > "Allow media deletion" must be enabled
+                logger.info(f"  Deleting '{item.title}' from Plex (files deleted if server allows)...")
+                item.delete()
+                logger.info(f"  ✅ Deleted from Plex library")
+                logger.info(f"  💡 Files deleted only if 'Allow media deletion' is enabled in Plex Settings > Library")
                 
                 # Also delete from our database to prevent re-scanning
                 try:
