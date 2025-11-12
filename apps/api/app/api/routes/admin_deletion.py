@@ -422,6 +422,13 @@ async def execute_deletion(
                 }
             }
         
+        # BATCH SIZE LIMIT: Process max 10 at a time to avoid timeouts
+        MAX_BATCH_SIZE = 10
+        if len(candidates) > MAX_BATCH_SIZE:
+            logger.warning(f"⚠️  Batch size limited: {len(candidates)} candidates requested, processing first {MAX_BATCH_SIZE}")
+            logger.warning(f"    To delete all {len(candidates)}, run deletion multiple times or delete in smaller batches")
+            candidates = candidates[:MAX_BATCH_SIZE]
+        
         # Execute CASCADE deletion on each candidate
         deletion_results = []
         deleted_count = 0
@@ -502,7 +509,7 @@ async def execute_deletion(
         logger.warning(f"{action} using rule {request.rule_id}: deleted={deleted_count}, failed={failed_count}")
         
         # Return simplified results
-        return {
+        response = {
             "rule_id": request.rule_id,
             "dry_run": request.dry_run,
             "results": {
@@ -514,6 +521,14 @@ async def execute_deletion(
             },
             "cascade_details": deletion_results  # Include full cascade results for debugging
         }
+        
+        # Add batch limit warning if applicable
+        if len(request.candidate_ids or []) > MAX_BATCH_SIZE or len(candidates) == MAX_BATCH_SIZE:
+            response["batch_limit_applied"] = True
+            response["batch_size"] = MAX_BATCH_SIZE
+            response["message"] = f"Processed {MAX_BATCH_SIZE} items. To delete more, run deletion again."
+        
+        return response
     except ValueError as e:
         logger.error(f"ValueError in execute_deletion: {e}")
         raise HTTPException(
